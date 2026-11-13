@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.playwright-mcp/
+.taste-skill/
+out/
+dist/
+*.tsbuildinfo
+.env*
+!.env.example

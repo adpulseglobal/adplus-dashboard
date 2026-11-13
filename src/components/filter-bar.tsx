@@ -1,0 +1,255 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChevronDown, CircleAlert } from "lucide-react";
+import { apiFetch, apiUrl } from "@/lib/api-client";
+import {
+  CAMPAIGN_TYPES, DEVICE_CATEGORIES, defaultDashboardFilters, getFilterWarnings,
+  parseDashboardFiltersFromSearch, serializeDashboardFilters, validateDashboardFilters,
+  type CampaignType, type DashboardFilters, type DeviceCategory, type FilterValidationIssue,
+} from "@contracts/dashboard-filters";
+
+interface GoogleAdsAccountOption { id: string; displayName: string; mode: "live" | "mock" }
+interface Ga4PropertyOption { id: string; displayName: string; accountName: string; accountId: string; mode: "live" | "mock" }
+interface Ga4AccountOption { id: string; displayName: string; properties: Ga4PropertyOption[]; mode: "live" | "mock" }
+interface CampaignOption { id: string; name: string; type: string }
+interface AdsFilterOptions { campaigns: CampaignOption[]; campaignTypes: string[]; mode: "live" | "mock" }
+interface Ga4FilterOptions { channelGroups: string[]; sourceMediums: string[]; landingPages: string[]; truncated: boolean; mode: "live" | "mock" }
+interface ValidationResponse { warnings: string[]; previousPeriod: { startDate: string; endDate: string } | null }
+export interface SelectedSources { account: string; property: string }
+
+const FILTER_CHANGE_EVENT = "adpulse:filters-changed";
+const defaultFilters = defaultDashboardFilters();
+
+export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: { mode?: "report" | "settings"; appliedPeriod?: string; onSelectionChange?: (selection: SelectedSources) => void; allowedSources?: { googleAds: boolean; ga4: boolean } }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
+  const [draft, setDraft] = useState<DashboardFilters>(defaultFilters);
+  const [issues, setIssues] = useState<FilterValidationIssue[]>([]);
+  const [accounts, setAccounts] = useState<GoogleAdsAccountOption[]>([]);
+  const [ga4Accounts, setGa4Accounts] = useState<Ga4AccountOption[]>([]);
+  const [ga4AccountsLoaded, setGa4AccountsLoaded] = useState(false);
+  const [ga4AccountsError, setGa4AccountsError] = useState("");
+  const [adsOptions, setAdsOptions] = useState<AdsFilterOptions | null>(null);
+  const [ga4Options, setGa4Options] = useState<Ga4FilterOptions | null>(null);
+  const [optionError, setOptionError] = useState("");
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    const parsed = parseDashboardFiltersFromSearch(window.location.search);
+    if (parsed.success) {
+      setFilters(parsed.data);
+      setDraft(parsed.data);
+    } else {
+      setIssues(parsed.issues);
+    }
+    const restoreFromUrl = () => {
+      const next = parseDashboardFiltersFromSearch(window.location.search);
+      if (next.success) { setFilters(next.data); setDraft(next.data); setIssues([]); }
+      else setIssues(next.issues);
+    };
+    window.addEventListener("popstate", restoreFromUrl);
+    return () => window.removeEventListener("popstate", restoreFromUrl);
+  }, []);
+
+  useEffect(() => {
+    if (!allowedSources.googleAds) { setAccounts([]); return; }
+    const controller = new AbortController();
+    fetchJson<GoogleAdsAccountOption[]>(apiUrl("/connections/google-ads"), controller.signal)
+      .then((ads) => { setAccounts(ads); setOptionError(""); })
+      .catch((error: Error) => { if (error.name !== "AbortError") setOptionError("Account options are unavailable. Try reloading when your connection is restored."); });
+    return () => controller.abort();
+  }, [allowedSources.googleAds]);
+
+  useEffect(() => {
+    if (!allowedSources.ga4) { setGa4Accounts([]); setGa4AccountsLoaded(true); return; }
+    const controller = new AbortController();
+    fetchJson<Ga4AccountOption[]>(apiUrl("/connections/ga4/accounts"), controller.signal)
+      .then((availableAccounts) => {
+        setGa4Accounts(availableAccounts);
+        setGa4AccountsLoaded(true);
+        setGa4AccountsError("");
+      })
+      .catch((error: Error) => {
+        if (error.name !== "AbortError") setGa4AccountsError("GA4 accounts and properties could not be loaded.");
+      });
+    return () => controller.abort();
+  }, [allowedSources.ga4]);
+
+  useEffect(() => {
+    if (mode !== "report" || !allowedSources.googleAds) { setAdsOptions(null); setOptionError(""); return; }
+    if (!filters.googleAdsAccountId) { setAdsOptions(null); setOptionError(""); return; }
+    const controller = new AbortController();
+    fetchJson<AdsFilterOptions>(apiUrl(`/connections/google-ads/filter-options?accountId=${encodeURIComponent(filters.googleAdsAccountId)}`), controller.signal)
+      .then((options) => { setAdsOptions(options); setOptionError(""); }).catch((error: Error) => { if (error.name !== "AbortError") setOptionError("Google Ads campaign options could not be loaded."); });
+    return () => controller.abort();
+  }, [filters.googleAdsAccountId, mode, allowedSources.googleAds]);
+
+  useEffect(() => {
+    if (mode !== "report" || !allowedSources.ga4) { setGa4Options(null); return; }
+    if (!filters.ga4PropertyId) { setGa4Options(null); setOptionError(""); return; }
+    const controller = new AbortController();
+    fetchJson<Ga4FilterOptions>(apiUrl(`/connections/ga4/filter-options?propertyId=${encodeURIComponent(filters.ga4PropertyId)}`), controller.signal)
+      .then((options) => { setGa4Options(options); setOptionError(""); }).catch((error: Error) => { if (error.name !== "AbortError") setOptionError("GA4 filter options could not be loaded."); });
+    return () => controller.abort();
+  }, [filters.ga4PropertyId, mode, allowedSources.ga4]);
+
+  useEffect(() => {
+    if (mode !== "report") { setValidationWarnings([]); return; }
+    if (!isMeaningfulFilterChange(filters)) { setValidationWarnings([]); return; }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      apiFetch(apiUrl("/filters/validate"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(filters), signal: controller.signal })
+        .then(async (response) => {
+          const result = await response.json();
+          if (!response.ok) throw new Error(getApiError(result));
+          return result as ValidationResponse;
+        })
+        .then((result) => { setValidationWarnings(result.warnings); setIssues([]); })
+        .catch((error: Error) => { if (error.name !== "AbortError") setIssues([{ field: "filters", message: error.message }]); });
+    }, 250);
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [filters, mode]);
+
+  const warnings = useMemo(() => [...new Set([...getFilterWarnings(filters), ...validationWarnings])], [filters, validationWarnings]);
+  const commit = useCallback((candidate: DashboardFilters) => {
+    setDraft(candidate);
+    const result = validateDashboardFilters(candidate);
+    if (!result.success) { setIssues(result.issues); return; }
+    setIssues([]);
+    setFilters(result.data);
+    const url = serializeDashboardFilters(window.location.pathname, result.data);
+    window.history.replaceState(null, "", url);
+    window.dispatchEvent(new Event(FILTER_CHANGE_EVENT));
+  }, []);
+
+  useEffect(() => {
+    if (!ga4AccountsLoaded || ga4AccountsError) return;
+    const account = ga4Accounts.find((item) => item.id === filters.ga4AccountId);
+    if (!account && filters.ga4PropertyId && !filters.ga4AccountId) {
+      const owner = ga4Accounts.find((item) => item.properties.some((property) => property.id === filters.ga4PropertyId));
+      if (owner) { commit({ ...filters, ga4AccountId: owner.id }); return; }
+    }
+    if (filters.ga4AccountId && !account) {
+      commit({ ...filters, ga4AccountId: "", ga4PropertyId: "", channelGroups: [], sourceMediums: [], landingPages: [] });
+      return;
+    }
+    if (filters.ga4PropertyId && !account?.properties.some((property) => property.id === filters.ga4PropertyId)) {
+      commit({ ...filters, ga4PropertyId: "", channelGroups: [], sourceMediums: [], landingPages: [] });
+    }
+  }, [filters, ga4Accounts, ga4AccountsLoaded, ga4AccountsError, commit]);
+
+  const updateList = <T extends string>(field: "campaignIds" | "campaignTypes" | "devices" | "channelGroups" | "sourceMediums" | "landingPages", value: T, checked: boolean) => {
+    const current = draft[field] as T[];
+    const next = checked ? [...current, value] : current.filter((item) => item !== value);
+    commit({ ...draft, [field]: next });
+  };
+
+  const campaignTypeOptions = adsOptions?.campaignTypes ?? [...CAMPAIGN_TYPES];
+  const channelOptions = ga4Options?.channelGroups ?? [];
+  const sourceMediumOptions = ga4Options?.sourceMediums ?? [];
+  const landingPageOptions = ga4Options?.landingPages ?? [];
+  const selectedCount = filters.campaignIds.length + filters.campaignTypes.length + filters.devices.length + filters.channelGroups.length + filters.sourceMediums.length + filters.landingPages.length;
+  const selectedGa4Account = ga4Accounts.find((item) => item.id === draft.ga4AccountId);
+  const properties = selectedGa4Account?.properties ?? [];
+
+  useEffect(() => {
+    const account = accounts.find((item) => item.id === filters.googleAdsAccountId);
+    const property = ga4Accounts.flatMap((item) => item.properties).find((item) => item.id === filters.ga4PropertyId);
+    onSelectionChange?.({
+      account: account?.displayName ?? (filters.googleAdsAccountId ? `Account ${filters.googleAdsAccountId}` : "Not selected"),
+      property: property?.displayName ?? (filters.ga4PropertyId ? `Property ${filters.ga4PropertyId}` : "Not selected"),
+    });
+  }, [accounts, filters.googleAdsAccountId, filters.ga4PropertyId, ga4Accounts, onSelectionChange]);
+
+  const sourceSelectionFields = <div className="filter-primary-row settings-source-fields">
+    {allowedSources.googleAds && <label className="filter-field"><span>Google Ads account</span><select value={draft.googleAdsAccountId} onChange={(event) => { const googleAdsAccountId = event.target.value; commit({ ...draft, googleAdsAccountId, ga4AdsScope: googleAdsAccountId ? draft.ga4AdsScope : false, campaignIds: [], campaignTypes: [] }); }}><option value="">Choose an Ads account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.displayName} · {account.id}</option>)}</select></label>}
+    {allowedSources.ga4 && <label className="filter-field"><span>GA4 account</span><select value={draft.ga4AccountId} disabled={!ga4AccountsLoaded || Boolean(ga4AccountsError)} onChange={(event) => commit({ ...draft, ga4AccountId: event.target.value, ga4PropertyId: "", channelGroups: [], sourceMediums: [], landingPages: [] })}><option value="">{ga4AccountsError ? "Could not load GA4 accounts" : !ga4AccountsLoaded ? "Loading GA4 accounts…" : "Choose a GA4 account"}</option>{ga4Accounts.map((account) => <option key={account.id} value={account.id}>{account.displayName} · {account.id}</option>)}</select></label>}
+    {allowedSources.ga4 && <label className="filter-field"><span>GA4 property</span><select value={draft.ga4PropertyId} disabled={!draft.ga4AccountId || !ga4AccountsLoaded || Boolean(ga4AccountsError) || properties.length === 0} onChange={(event) => commit({ ...draft, ga4PropertyId: event.target.value, channelGroups: [], sourceMediums: [], landingPages: [] })}><option value="">{!draft.ga4AccountId ? "Choose a GA4 account first" : properties.length ? "Choose a GA4 property" : "No properties in this account"}</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.displayName} · {property.id}</option>)}</select></label>}
+  </div>;
+
+  if (mode === "settings") return <section className="settings-source-panel" aria-labelledby="settings-source-title">
+    <header className="settings-source-header"><div><h2 id="settings-source-title">Reporting sources</h2><p>Choose a Google Ads account and a GA4 account and property independently.</p></div></header>
+    {sourceSelectionFields}
+    {optionError && <InlineError>{optionError}</InlineError>}
+    {ga4AccountsError && <InlineError>{ga4AccountsError}</InlineError>}
+    {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
+  </section>;
+
+  return <div className="report-filter-controls">
+    <div className="filter-date-range">
+      {appliedPeriod && <span className="snapshot-period" aria-label={`Applied date range: ${appliedPeriod}`}><CalendarDays size={13} aria-hidden="true" />{appliedPeriod}</span>}
+      <label className="filter-field"><span className="sr-only">From</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={draft.dateRange.startDate} onChange={(event) => commit({ ...draft, dateRange: { ...draft.dateRange, startDate: event.target.value } })} /></label>
+      <span className="filter-date-separator" aria-hidden="true">to</span>
+      <label className="filter-field"><span className="sr-only">To</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={draft.dateRange.endDate} onChange={(event) => commit({ ...draft, dateRange: { ...draft.dateRange, endDate: event.target.value } })} /></label>
+    </div>
+    <details className="filter-disclosure report-more-filters" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
+    <summary><span className="filter-toggle-label">More filters{selectedCount ? ` · ${selectedCount}` : ""}</span><ChevronDown size={14} aria-hidden="true" /></summary>
+    <section className="filter-panel" aria-label="Additional report filters">
+    <details className="advanced-filters">
+      <summary>More filters <span className="filter-count">{selectedCount || "None selected"}</span><ChevronDown size={14} /></summary>
+      <div className="advanced-filter-grid">
+        {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={draft.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!draft.googleAdsAccountId} emptyLabel={draft.googleAdsAccountId ? "No campaigns found" : "Choose an Ads account in Settings first"} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
+        <MultiSelect title="Campaign types" values={draft.campaignTypes} options={campaignTypeOptions.map((item) => ({ value: item, label: formatEnum(item) }))} disabled={!draft.googleAdsAccountId} emptyLabel={draft.googleAdsAccountId ? "No campaign types found" : "Choose an Ads account in Settings first"} onChange={(type, selected) => updateList("campaignTypes", type as CampaignType, selected)} /></>}
+        <MultiSelect title="Devices" values={draft.devices} options={DEVICE_CATEGORIES.map((item) => ({ value: item, label: titleCase(item) }))} onChange={(device, selected) => updateList("devices", device as DeviceCategory, selected)} />
+        {allowedSources.ga4 && <><MultiSelect title="GA4 channel group" values={draft.channelGroups} options={channelOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No channel groups found" : "Choose a GA4 property in Settings first"} onChange={(value, selected) => updateList("channelGroups", value, selected)} />
+        <MultiSelect title="GA4 source / medium" values={draft.sourceMediums} options={sourceMediumOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No source / medium values found" : "Choose a GA4 property in Settings first"} onChange={(value, selected) => updateList("sourceMediums", value, selected)} />
+        <MultiSelect title="GA4 landing page" values={draft.landingPages} options={landingPageOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No landing pages found" : "Choose a GA4 property in Settings first"} onChange={(value, selected) => updateList("landingPages", value, selected)} /></>}
+      </div>
+      {ga4Options?.truncated && <p className="filter-hint">GA4 options show the top 1,000 values from the last 90 days.</p>}
+    </details>
+    {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
+    {warnings.map((warning) => <div className="filter-message warning" role="status" key={warning}>{warning}</div>)}
+    </section>
+    </details>
+    {(optionError || ga4AccountsError) && <div className="filter-errors" aria-label="Connection errors">
+      {optionError && <InlineError>{optionError}</InlineError>}
+      {ga4AccountsError && <InlineError>{ga4AccountsError}</InlineError>}
+    </div>}
+  </div>;
+}
+
+function InlineError({ children }: { children: string }) {
+  return <div className="connection-error" role="alert"><CircleAlert size={17} strokeWidth={2} aria-hidden="true" /><span>{children}</span></div>;
+}
+
+function MultiSelect({ title, values, options, disabled, emptyLabel, onChange }: {
+  title: string; values: string[]; options: Array<{ value: string; label: string }>; disabled?: boolean; emptyLabel?: string; onChange: (value: string, checked: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const summary = values.length ? `${values.length} selected` : "All values";
+  return <details className={`multi-select ${disabled ? "disabled" : ""}`} open={open} onToggle={(event) => { setOpen(event.currentTarget.open); closeOtherMultiSelects(event.currentTarget); }} onKeyDown={(event) => { if (event.key === "Escape") { event.currentTarget.open = false; setOpen(false); event.currentTarget.querySelector("summary")?.focus(); } }}>
+    {open && <button type="button" className="multi-select-backdrop" aria-label={`Close ${title} options`} onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; setOpen(false); }} />}
+    <summary aria-label={`${title}, ${summary}`} aria-disabled={disabled} onClick={(event) => { if (disabled) event.preventDefault(); }}>{title}<span>{disabled ? emptyLabel : summary}</span><ChevronDown size={13} /></summary>
+    <div className="multi-select-popover">{options.length ? options.map((option) => <label key={option.value}><input type="checkbox" checked={values.includes(option.value)} disabled={disabled} onChange={(event) => onChange(option.value, event.target.checked)} /><span>{option.label}</span></label>) : <span className="empty-options">{emptyLabel ?? "No options"}</span>}</div>
+  </details>;
+}
+
+function closeOtherMultiSelects(active: HTMLDetailsElement): void {
+  if (!active.open) return;
+  document.querySelectorAll<HTMLDetailsElement>(".multi-select[open]").forEach((details) => {
+    if (details !== active) details.open = false;
+  });
+}
+
+async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
+  const response = await apiFetch(url, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status}).`);
+  return response.json() as Promise<T>;
+}
+
+function getApiError(body: unknown): string {
+  if (typeof body === "object" && body !== null && "message" in body) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+    if (Array.isArray(message)) return message.join(" ");
+  }
+  return "The selected filters could not be validated.";
+}
+
+function isMeaningfulFilterChange(filters: DashboardFilters): boolean {
+  return Boolean(filters.googleAdsAccountId || filters.ga4PropertyId || filters.campaignIds.length || filters.campaignTypes.length || filters.channelGroups.length || filters.sourceMediums.length || filters.landingPages.length);
+}
+
+function titleCase(value: string): string { return value[0].toUpperCase() + value.slice(1); }
+function formatEnum(value: string): string { return value.split("_").map(titleCase).join(" "); }
