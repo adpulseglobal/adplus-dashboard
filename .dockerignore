@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.next
+out
+.git
+.codex
+.cursor
+.playwright-mcp
+.taste-skill
+.impeccable
+sample_dashboard.PNG
+.env*
+!.env.production
