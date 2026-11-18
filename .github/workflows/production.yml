@@ -1,0 +1,104 @@
+name: Validate and deploy AdPulse
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate application
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build API
+        run: npm run build:api
+
+  deploy:
+    name: Deploy production
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: adpulse-production
+      cancel-in-progress: false
+    env:
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      VM_SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+      VM_SSH_KNOWN_HOSTS: ${{ secrets.VM_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$RUNNER_TEMP/adpulse-ssh"
+          printf '%s\n' "$VM_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/adpulse-ssh/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/adpulse-ssh/id_ed25519"
+          printf '%s\n' "$VM_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/adpulse-ssh/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/adpulse-ssh/id_ed25519" >/dev/null
+
+      - name: Pull, migrate, and restart on the VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$RUNNER_TEMP/adpulse-ssh/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/adpulse-ssh/known_hosts" \
+            -o StrictHostKeyChecking=yes \
+            "$VM_USER@$VM_HOST" "bash -se -- '$GITHUB_SHA'" <<'REMOTE'
+          set -Eeuo pipefail
+          expected_sha="$1"
+          app_dir="/opt/adpulse-dashboard/adplus-dashboard"
+          cd "$app_dir"
+
+          git checkout main
+          git pull --ff-only origin main
+          actual_sha="$(git rev-parse HEAD)"
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "VM checkout does not match the workflow commit."
+            exit 1
+          fi
+
+          compose=(sudo -n docker compose -f compose.production.yaml -p adpulse)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" build --pull
+          "${compose[@]}" --profile tools run --rm migrate
+          "${compose[@]}" up -d
+          "${compose[@]}" ps
+
+          web_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login)"
+          if [ "$web_code" != "200" ]; then
+            echo "Frontend health check failed with HTTP $web_code."
+            exit 1
+          fi
+
+          api_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/auth/me)"
+          case "$api_code" in
+            200|401) ;;
+            *) echo "API health check failed with HTTP $api_code."; exit 1 ;;
+          esac
+          REMOTE
