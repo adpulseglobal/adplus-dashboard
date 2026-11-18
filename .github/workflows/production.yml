@@ -90,8 +90,20 @@ jobs:
           "${compose[@]}" config --quiet
           "${compose[@]}" build --pull
           "${compose[@]}" --profile tools run --rm migrate
-          "${compose[@]}" up -d
+          "${compose[@]}" up -d --force-recreate api web
           "${compose[@]}" ps
+
+          web_container="$("${compose[@]}" ps -q web)"
+          if [ -z "$web_container" ]; then
+            echo "Frontend container was not created."
+            exit 1
+          fi
+          built_web_image="$(sudo -n docker image inspect --format '{{.Id}}' adpulse-web:production)"
+          running_web_image="$(sudo -n docker inspect --format '{{.Image}}' "$web_container")"
+          if [ "$running_web_image" != "$built_web_image" ]; then
+            echo "Frontend container is not using the image built by this deployment."
+            exit 1
+          fi
 
           web_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login)"
           if [ "$web_code" != "200" ]; then
