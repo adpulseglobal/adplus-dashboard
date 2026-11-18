@@ -11,6 +11,8 @@ interface EncryptedTokenRow {
 interface ConnectionStatusRow {
   connected_at: Date;
   connected_by_email: string | null;
+  connection_status: "connected" | "reauth_required" | "configuration_error";
+  status_message: string | null;
 }
 
 export interface GoogleConnectionStatus {
@@ -18,6 +20,8 @@ export interface GoogleConnectionStatus {
   storage: "database" | "environment" | "none";
   connectedAt: string | null;
   connectedBy: string | null;
+  health: "connected" | "reauth_required" | "configuration_error" | "not_connected";
+  message: string | null;
 }
 
 @Injectable()
@@ -61,6 +65,9 @@ export class GoogleTokenVault {
            refresh_token_iv = EXCLUDED.refresh_token_iv,
            refresh_token_auth_tag = EXCLUDED.refresh_token_auth_tag,
            connected_by = EXCLUDED.connected_by,
+           connection_status = 'connected',
+           status_message = NULL,
+           status_updated_at = now(),
            connected_at = now(),
            updated_at = now()`,
         [ciphertext, iv, authTag, connectedBy],
@@ -74,14 +81,14 @@ export class GoogleTokenVault {
 
   async getStatus(): Promise<GoogleConnectionStatus> {
     const result = await this.database.query<ConnectionStatusRow>(
-      `SELECT c.connected_at, u.email AS connected_by_email
+      `SELECT c.connected_at, u.email AS connected_by_email, c.connection_status, c.status_message
        FROM app_google_oauth_connection c
        LEFT JOIN app_users u ON u.id = c.connected_by
        WHERE c.connection_key = 'shared'`,
     );
     const row = result.rows[0];
     if (row) {
-      return { connected: true, storage: "database", connectedAt: row.connected_at.toISOString(), connectedBy: row.connected_by_email };
+      return { connected: true, storage: "database", connectedAt: row.connected_at.toISOString(), connectedBy: row.connected_by_email, health: row.connection_status, message: row.status_message };
     }
 
     const legacyEnvironmentToken = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
@@ -90,7 +97,18 @@ export class GoogleTokenVault {
       storage: legacyEnvironmentToken ? "environment" : "none",
       connectedAt: null,
       connectedBy: null,
+      health: legacyEnvironmentToken ? "connected" : "not_connected",
+      message: null,
     };
+  }
+
+  async markHealth(health: "reauth_required" | "configuration_error", message: string): Promise<void> {
+    await this.database.query(
+      `UPDATE app_google_oauth_connection
+       SET connection_status = $1, status_message = $2, status_updated_at = now(), updated_at = now()
+       WHERE connection_key = 'shared'`,
+      [health, message],
+    );
   }
 
   private getEncryptionKey(): Buffer {

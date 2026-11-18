@@ -2,10 +2,13 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { ConnectionOption, Ga4Account, Ga4Property, GoogleAdsAccount } from "./connection.types";
 import { CampaignFilterOptions, GoogleAdsProvider } from "../providers/google-ads.provider";
 import { Ga4FilterOptions, Ga4Provider } from "../providers/ga4.provider";
+import { GoogleTokenVault } from "../providers/google-token-vault.service";
 
 @Injectable()
 export class ConnectionsService {
-  constructor(private readonly adsProvider: GoogleAdsProvider, private readonly ga4Provider: Ga4Provider) {}
+  constructor(private readonly adsProvider: GoogleAdsProvider, private readonly ga4Provider: Ga4Provider, private readonly tokenVault: GoogleTokenVault) {}
+
+  getGoogleConnectionStatus() { return this.tokenVault.getStatus(); }
 
   listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
     return this.adsProvider.listAccessibleAccounts();

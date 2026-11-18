@@ -243,7 +243,7 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 
 ## Milestone 9 - Authentication, roles and access control
 
-**Status:** In progress. Core authentication/access-control APIs and the initial Settings/login UI are deployed and production sign-in, password reset, and live reports are confirmed. Role/permission edge-case verification remains. The production OAuth connection flow has been implemented locally but is not yet deployed or live-verified.
+**Status:** In progress. Core authentication/access-control APIs and the initial Settings/login UI are deployed and production sign-in, password reset, and live reports are confirmed. Role/permission edge-case verification remains. Production OAuth storage and health reporting are implemented locally but are not yet deployed or live-verified.
 
 ### Requested scope
 
@@ -270,6 +270,7 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 - Fixed localhost authentication redirects caused by a `localhost` frontend calling a loopback API as `127.0.0.1`; browser verification now shows login succeeds and `/auth/me` returns 200 on the required first-password-reset page.
 - Added a Super Admin-only production Google OAuth connection flow from Settings. It validates CSRF on initiation, stores one-time OAuth state hashes in PostgreSQL, exchanges authorization codes server-side, encrypts the shared refresh token with AES-256-GCM, and never returns or logs the token.
 - Added a token vault migration and a Reporting Sources status/reconnect control. The API prefers the encrypted database token and retains the environment token only as a transition fallback until production connects and removes it.
+- Added persistent Google connection health: `invalid_grant` marks reauthorization required, `invalid_client` marks an OAuth configuration issue, transient failures do not change the saved health, and a successful reconnect clears the status. Authorized reporting users see a shared dashboard notice; Super Admins see the state and reconnect action in Settings. The status endpoint is checked on page load and every 60 seconds.
 - Added `pg` as an API dependency and configured API/migration scripts to load `.env`. PostgreSQL migration and Super Admin bootstrap now run locally.
 
 ### Implementation checks
@@ -279,3 +280,4 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 - Design-taste frontend lint: passed with no banned patterns or warnings.
 - No automated tests were run. Chrome DevTools reproduced the initial login redirect loop and verified the fix: login returns 200 and `/auth/me` returns 200 on the required first-password-reset screen. Dashboard verification remains pending the Super Admin's new password.
 - The new production OAuth flow, migration, and Settings UI have passed TypeScript checking and the API build, and are pushed to `main`. The frontend production build and deployment remain pending; verify the Google Cloud production callback URI and remove the legacy refresh-token environment variable after the database connection is established.
+- The Google connection health migration and UI/API changes pass TypeScript checking and the API build locally. Production deployment must run the migrations before restarting the API; then verify both `reauth_required` and successful reconnection behavior.

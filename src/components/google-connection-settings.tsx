@@ -8,6 +8,8 @@ type GoogleConnectionStatus = {
   storage: "database" | "environment" | "none";
   connectedAt: string | null;
   connectedBy: string | null;
+  health: "connected" | "reauth_required" | "configuration_error" | "not_connected";
+  message: string | null;
 };
 
 export function GoogleConnectionSettings() {
@@ -47,6 +49,10 @@ export function GoogleConnectionSettings() {
 
   const statusLabel = loading
     ? "Checking connection…"
+    : status?.health === "reauth_required"
+      ? "Reconnect required"
+      : status?.health === "configuration_error"
+        ? "OAuth configuration issue"
     : status?.storage === "database"
       ? "Connected · encrypted in the database"
       : status?.storage === "environment"
@@ -57,7 +63,9 @@ export function GoogleConnectionSettings() {
     <div className="google-connection-copy">
       <h2 id="google-connection-title">Google authorization</h2>
       <p>Authorize the shared Google Ads and GA4 reporting connection. The refresh token is encrypted before it is stored.</p>
-      <p className={`google-connection-status ${status?.connected ? "is-connected" : ""}`} role="status">{statusLabel}</p>
+      <p className={`google-connection-status ${status?.health === "connected" ? "is-connected" : status?.health === "reauth_required" || status?.health === "configuration_error" ? "is-attention" : ""}`} role="status">{statusLabel}</p>
+      {status?.health === "reauth_required" && <p className="google-connection-feedback error" role="alert">{status.message || "Google authorization expired or was revoked. Reconnect to resume reports."}</p>}
+      {status?.health === "configuration_error" && <p className="google-connection-feedback error" role="alert">{status.message || "Check the Google OAuth client configuration."}</p>}
       {status?.storage === "database" && status.connectedAt && <p className="google-connection-meta">Last connected {new Date(status.connectedAt).toLocaleString()}{status.connectedBy ? ` by ${status.connectedBy}` : ""}.</p>}
       {status?.storage === "environment" && <p className="google-connection-meta">Reconnect here to move authorization into encrypted database storage, then remove the legacy refresh-token environment variable.</p>}
       {message && <p className="google-connection-feedback success" role="status">{message}</p>}

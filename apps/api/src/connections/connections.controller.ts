@@ -10,6 +10,14 @@ interface SelectConnectionBody { id?: unknown }
 export class ConnectionsController {
   constructor(private readonly connectionsService: ConnectionsService) {}
 
+  @Get("google/status")
+  getGoogleStatus(@Req() request: Request) {
+    const user = authenticatedRequest(request);
+    if (user.mustResetPassword) throw new ForbiddenException("Change your temporary password before using the dashboard.");
+    if (!user.isSuperAdmin && !user.permissions.includes("google_ads.view") && !user.permissions.includes("ga4.view")) throw new ForbiddenException("Your role cannot access reporting sources.");
+    return this.connectionsService.getGoogleConnectionStatus();
+  }
+
   @Get("google-ads")
   @UseGuards(PermissionsGuard)
   @RequirePermissions("google_ads.view")

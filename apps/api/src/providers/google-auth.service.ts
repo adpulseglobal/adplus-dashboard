@@ -1,10 +1,11 @@
-import { Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
+import { HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { GoogleTokenVault } from "./google-token-vault.service";
 
 interface OAuthTokenResponse {
   access_token?: string;
   expires_in?: number;
   error?: string;
+  error_description?: string;
 }
 
 @Injectable()
@@ -34,7 +35,18 @@ export class GoogleAuthService {
       throw new ServiceUnavailableException("Google OAuth token service is unavailable.");
     }
     const result = await response.json().catch(() => ({})) as OAuthTokenResponse;
-    if (response.status === 400 || response.status === 401) throw new UnauthorizedException("Google authorization is expired or invalid. Ask the Super Admin to reconnect Google in Settings.");
+    if (result.error === "invalid_grant") {
+      const message = "Google authorization needs to be renewed. Ask the Super Admin to reconnect Google in Settings.";
+      await this.tokenVault.markHealth("reauth_required", message);
+      this.cachedToken = undefined;
+      throw new HttpException({ statusCode: 503, code: "GOOGLE_REAUTH_REQUIRED", message }, 503);
+    }
+    if (result.error === "invalid_client") {
+      const message = "Google OAuth client configuration is invalid. Ask the Super Admin to check the OAuth client settings.";
+      await this.tokenVault.markHealth("configuration_error", message);
+      throw new HttpException({ statusCode: 503, code: "GOOGLE_OAUTH_CONFIGURATION_ERROR", message }, 503);
+    }
+    if (response.status === 400 || response.status === 401) throw new ServiceUnavailableException("Google OAuth rejected the token request. Check the OAuth client configuration.");
     if (!response.ok || !result.access_token) throw new ServiceUnavailableException("Google OAuth could not issue an access token.");
     this.cachedToken = { value: result.access_token, expiresAt: Date.now() + (result.expires_in ?? 3600) * 1000 };
     return result.access_token;

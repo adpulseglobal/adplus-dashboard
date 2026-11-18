@@ -77,11 +77,18 @@ input { caret-color: var(--brand); accent-color: var(--brand); }
 .google-connection-copy > p { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .google-connection-copy .google-connection-status { display: inline-flex; margin-top: 12px; padding: 4px 9px; border-radius: 999px; background: #f0f1f2; color: #555c62; font-size: 12px; }
 .google-connection-copy .google-connection-status.is-connected { background: #e7f3eb; color: #26734c; }
+.google-connection-copy .google-connection-status.is-attention { background: #fff0e7; color: #9a3d1b; }
 .google-connection-copy .google-connection-meta { color: var(--muted); font-size: 12px; }
 .google-connection-feedback { margin-top: 10px; font-size: 13px; }
 .google-connection-feedback.success { color: #26734c; }
 .google-connection-feedback.error { color: #a9142c; }
 .google-connection-button { flex: none; min-height: 42px; }
+.google-health-notice { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; margin: 0 0 20px; padding: 14px 18px; background: #fff6eb; border: 1px solid #efd8bd; border-radius: 10px; color: #70401e; font-size: 13px; line-height: 1.5; }
+.google-health-notice strong { color: #5c3215; }
+.google-health-notice span { flex: 1 1 380px; }
+.google-health-notice a { color: #70401e; font-weight: 600; text-underline-offset: 3px; }
+.google-health-notice.is-error { background: #fff0ef; border-color: #edc7c3; color: #8b3028; }
+.google-health-notice.is-error strong, .google-health-notice.is-error a { color: #7b261f; }
 .settings-source-header { margin-bottom: 20px; }
 .settings-source-header h2 { font-size: 17px; font-weight: 600; }
 .settings-source-header p { margin-top: 4px; color: var(--muted); font-size: 13px; }

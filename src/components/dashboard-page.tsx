@@ -20,6 +20,7 @@ const navItems = [
 ];
 type AdsReport = { mode: "live" | "mock"; currency: string; period: { startDate: string; endDate: string }; totals: { spend: number; clicks: number; impressions: number; conversions: number; ctr: number; costPerConversion: number | null }; campaigns: Array<{ id: string; name: string; status: string; campaignType: string; spend: number; clicks: number; ctr: number; conversions: number }>; daily: Array<{ date?: string; spend: number }> ; devices: Array<{ device?: string; clicks: number; conversions: number; spend: number }>; campaignTypes: Array<{ campaignType?: string; spend: number; conversions: number }> };
 type Ga4Report = { mode: "live" | "mock"; period: { startDate: string; endDate: string }; totals: { sessions: number; users: number; engagedSessions: number; engagementRate: number; keyEvents: number }; daily: Array<{ date: string; sessions: number }>; channels: Array<{ name: string; sessions: number }>; sourceMediums: Array<{ name: string; sessions: number }>; landingPages: Array<{ name: string; sessions: number }>; devices: Array<{ name: string; sessions: number }>; truncated: boolean };
+type SharedGoogleHealth = { health: "connected" | "reauth_required" | "configuration_error" | "not_connected"; message: string | null };
 
 function Sidebar({ section, query, onNavigate, user, onLogout, logoutError }: { section: Section; query: string; onNavigate: () => void; user: SessionUser; onLogout: () => void; logoutError: string }) {
   const visibleItems = navItems.filter(({ key }) => key === "overview" ? user.permissions.includes("google_ads.view") || user.permissions.includes("ga4.view") || user.isSuperAdmin : key === "google-ads" ? user.permissions.includes("google_ads.view") || user.isSuperAdmin : user.permissions.includes("ga4.view") || user.isSuperAdmin);
@@ -244,6 +245,7 @@ export function DashboardPage({ section }: { section: Section }) {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [logoutError, setLogoutError] = useState("");
+  const [googleHealth, setGoogleHealth] = useState<SharedGoogleHealth | null>(null);
   const [selectedSources, setSelectedSources] = useState<SelectedSources>({ account: "Not selected", property: "Not selected" });
   const [adsReport, setAdsReport] = useState<AdsReport | null>(null);
   const [ga4Report, setGa4Report] = useState<Ga4Report | null>(null);
@@ -270,6 +272,18 @@ export function DashboardPage({ section }: { section: Section }) {
     });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!sessionUser || (!allowedSources.googleAds && !allowedSources.ga4)) return;
+    let active = true;
+    const refresh = () => void apiFetch("/connections/google/status").then(async (response) => {
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(getApiError(result));
+      if (active) setGoogleHealth(result as SharedGoogleHealth);
+    }).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [sessionUser, allowedSources.googleAds, allowedSources.ga4]);
   useEffect(() => {
     const sync = () => setQuery(window.location.search);
     sync();
@@ -375,6 +389,8 @@ export function DashboardPage({ section }: { section: Section }) {
     <aside id="sidebar" className={`sidebar ${menuOpen ? "is-open" : ""}`}><Sidebar section={section} query={query} user={sessionUser} onLogout={() => void handleLogout()} logoutError={logoutError} onNavigate={() => setMenuOpen(false)} /></aside>
     <main id="main-content" className="main-area" inert={menuOpen || undefined}><div className="page-content">
       <div className={`page-heading ${section === "settings" ? "settings-page-heading" : "report-page-heading"}`}><div><h1>{pageTitle}</h1>{section === "google-ads" ? <p>Campaign spend, clicks and conversions.</p> : section === "overview" ? <p>Your campaign spend and website traffic, together.</p> : section === "settings" ? <p>Choose reporting sources and manage access.</p> : null}</div><div className="page-heading-actions"><div className="reporting-scope" aria-label="Selected reporting sources"><div><span>Google Ads account</span><strong title={selectedSources.account}>{selectedSources.account}</strong></div><div><span>GA4 property</span><strong title={selectedSources.property}>{selectedSources.property}</strong></div></div>{section === "settings" ? null : <FilterBar mode="report" appliedPeriod={appliedPeriod} onSelectionChange={setSelectedSources} allowedSources={allowedSources} />}</div></div>
+      {googleHealth?.health === "reauth_required" && <div className="google-health-notice" role="alert"><strong>Google connection needs attention</strong><span>{googleHealth.message || "Google authorization expired or was revoked. Contact your Super Admin to reconnect Google in Settings."}</span>{section !== "settings" && <Link href={`/settings${query}`}>Open Settings</Link>}</div>}
+      {googleHealth?.health === "configuration_error" && <div className="google-health-notice is-error" role="alert"><strong>Google connection configuration issue</strong><span>{googleHealth.message || "The Super Admin needs to check the Google OAuth client settings."}</span></div>}
       {section === "settings" ? <SettingsWorkspace permissions={sessionUser.permissions} isSuperAdmin={sessionUser.isSuperAdmin} allowedSources={allowedSources} onSelectionChange={setSelectedSources} /> : null}
       {section === "ga4" && allowedSources.googleAds && adsScopeControl}
       {section === "ga4" && ga4Report?.truncated && <p className="demo-notice" role="note">Some GA4 breakdowns exceeded 50,000 rows and were capped. Narrow the date range or add a filter to see the full breakdown.</p>}
