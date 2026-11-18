@@ -255,7 +255,7 @@ summary::-webkit-details-marker { display: none; }
 .advanced-filter-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 10px; }
 .multi-select { position: relative; min-width: 0; }
 .multi-select > summary { display: flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; position: relative; z-index: 2; }
-.multi-select > summary span { margin-left: auto; color: var(--muted); white-space: nowrap; font-size: 11px; }
+.multi-select > summary span { min-width: 0; max-width: calc(100% - 64px); margin-left: auto; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .multi-select > summary svg { flex: none; }
 .multi-select.disabled > summary { color: var(--muted); background: #f5f6f7; cursor: not-allowed; }
 .multi-select[open] { z-index: 20; }
@@ -446,7 +446,7 @@ summary::-webkit-details-marker { display: none; }
   .filter-field input, .filter-field select, .multi-select > summary { height: 44px; }
   .advanced-filters > summary { min-height: 44px; }
   .multi-select > summary { flex-wrap: wrap; height: auto; min-height: 52px; padding: 6px 8px; }
-  .multi-select > summary span { margin-left: 0; }
+  .multi-select > summary span { flex: 1 1 100%; max-width: 100%; margin-left: 0; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; line-height: 1.3; }
   .multi-select > summary svg { margin-left: auto; }
   .multi-select-popover { top: 58px; }
   .multi-select-popover label { min-height: 44px; }
