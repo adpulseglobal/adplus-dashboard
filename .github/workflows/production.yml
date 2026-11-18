@@ -88,7 +88,17 @@ jobs:
 
           compose=(sudo -n docker compose -f compose.production.yaml -p adpulse)
           "${compose[@]}" config --quiet
-          "${compose[@]}" build --pull
+          # Rebuild from the checked-out commit so cached build layers cannot
+          # leave the container serving static chunks from an earlier deploy.
+          "${compose[@]}" build --pull --no-cache
+
+          built_web_image="$(sudo -n docker image inspect --format '{{.Id}}' adpulse-web:production)"
+          if ! sudo -n docker run --rm --entrypoint sh "$built_web_image" -lc \
+            "grep -R -q 'Performance Dashboard' /app/.next/static/chunks"; then
+            echo "New frontend image does not contain the expected dashboard bundle."
+            exit 1
+          fi
+
           "${compose[@]}" --profile tools run --rm migrate
           "${compose[@]}" up -d --force-recreate api web
           "${compose[@]}" ps
