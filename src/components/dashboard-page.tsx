@@ -349,7 +349,7 @@ export function DashboardPage({ section }: { section: Section }) {
     media.addEventListener("change", closeOnDesktop);
     return () => { window.removeEventListener("keydown", close); media.removeEventListener("change", closeOnDesktop); };
   }, []);
-  const pageTitle = section === "google-ads" ? "Google Ads" : section === "ga4" ? "GA4 Analytics" : section === "settings" ? "Settings" : "Performance overview";
+  const pageTitle = section === "google-ads" ? "Google Ads" : section === "ga4" ? "GA4 Analytics" : section === "settings" ? "Settings" : "Performance Dashboard";
   const handleLogout = async () => {
     setLogoutError("");
     try {
