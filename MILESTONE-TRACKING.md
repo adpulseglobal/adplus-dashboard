@@ -57,7 +57,7 @@ The workspace initially contained only the project plan and was not a Git checko
 - Milestone 6: Overview and Settings UI implemented. Comparisons are excluded per the removed control; latest responsive layout and partial-failure behavior still need browser/integration verification.
 - Milestone 7: Not started.
 - Milestone 8: Not started.
-- Milestone 9: In progress. Production deployment, sign-in, mandatory first-login password reset, and live Ads/GA4 reports have been confirmed by the operator. Role and permission edge cases still need verification. A production OAuth connection flow is now implemented locally: Super Admin authorization, one-time state validation, and AES-256-GCM encrypted refresh-token storage in PostgreSQL. Build, deployment, Google Cloud callback registration, and production connection-flow verification remain pending.
+- Milestone 9: In progress. Production deployment, sign-in, mandatory first-login password reset, and live Ads/GA4 reports have been confirmed by the operator. Role and permission edge cases still need verification. A production OAuth connection flow is implemented: Super Admin authorization, one-time state validation, and AES-256-GCM encrypted refresh-token storage in PostgreSQL. TypeScript checking and the API build pass; frontend production build, deployment, Google Cloud callback registration, and production connection-flow verification remain pending.
 
 ## Milestone 2 — Google authentication and connection discovery
 
@@ -278,4 +278,4 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 - `npm run build:api`: passed.
 - Design-taste frontend lint: passed with no banned patterns or warnings.
 - No automated tests were run. Chrome DevTools reproduced the initial login redirect loop and verified the fix: login returns 200 and `/auth/me` returns 200 on the required first-password-reset screen. Dashboard verification remains pending the Super Admin's new password.
-- The new production OAuth flow, migration, and Settings UI have not yet been built or deployed; verify the Google Cloud production callback URI and remove the legacy refresh-token environment variable after the database connection is established.
+- The new production OAuth flow, migration, and Settings UI have passed TypeScript checking and the API build, and are pushed to `main`. The frontend production build and deployment remain pending; verify the Google Cloud production callback URI and remove the legacy refresh-token environment variable after the database connection is established.
