@@ -55,10 +55,13 @@ jobs:
         run: |
           set -euo pipefail
           install -m 700 -d "$RUNNER_TEMP/adpulse-ssh"
-          printf '%s\n' "$VM_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/adpulse-ssh/id_ed25519"
+          printf '%s' "$VM_SSH_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/adpulse-ssh/id_ed25519"
           chmod 600 "$RUNNER_TEMP/adpulse-ssh/id_ed25519"
           printf '%s\n' "$VM_SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/adpulse-ssh/known_hosts"
-          ssh-keygen -y -f "$RUNNER_TEMP/adpulse-ssh/id_ed25519" >/dev/null
+          if ! ssh-keygen -y -f "$RUNNER_TEMP/adpulse-ssh/id_ed25519" >/dev/null; then
+            echo "::error::VM_SSH_PRIVATE_KEY must contain the complete, unencrypted private key file without the .pub extension."
+            exit 1
+          fi
 
       - name: Pull, migrate, and restart on the VM
         shell: bash
