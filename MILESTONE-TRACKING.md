@@ -50,28 +50,28 @@ The workspace initially contained only the project plan and was not a Git checko
 ## Later milestones
 
 - Milestone 0: Partially complete. Foundation, API, shared contracts, mock mode, and `.env.example` exist; one-command full-stack start, root README, lint/format setup, and baseline CI remain.
-- Milestone 2: OAuth and account/property discovery implemented and live-checked for My Home Closet. Per-user sessions/credential isolation and persisted server-side selections remain.
+- Milestone 2: OAuth and account/property discovery implemented and live-checked for My Home Closet. App-user sessions are delivered by Milestone 9; Google account access is still one shared deployment-level identity, and server-side selection persistence remains unimplemented.
 - Milestone 3: Implemented; contract tests and live Ads-to-GA4 property linking verified. The comparison selector was removed at the user's direction.
 - Milestone 4: Implemented; live Google Ads reports verified for My Home Closet.
 - Milestone 5: Implemented and live GA4 report verified for My Home Closet; adapter tests need alignment with the current filter contract and execution.
 - Milestone 6: Overview and Settings UI implemented. Comparisons are excluded per the removed control; latest responsive layout and partial-failure behavior still need browser/integration verification.
 - Milestone 7: Not started.
 - Milestone 8: Not started.
-- Milestone 9: In progress. PostgreSQL, admin-created email/password accounts with mandatory first-login reset, seven initial permissions, one role per user, protected non-assignable Super Admin, and operator-provided deployment-specific bootstrap password are confirmed. Auth policy: 15-minute access tokens; refresh tokens rotate on use with a 24-hour absolute lifetime from login; expiry, logout, or invalid-token reuse revokes all sessions for the user; HttpOnly/SameSite=Lax cookies; CSRF tokens for state-changing requests; Secure in production with a localhost development exception. New-user temporary credentials are downloaded once as JSON for manual sharing.
+- Milestone 9: In progress. Production deployment, sign-in, mandatory first-login password reset, and live Ads/GA4 reports have been confirmed by the operator. Role and permission edge cases still need verification. A production OAuth connection flow is now implemented locally: Super Admin authorization, one-time state validation, and AES-256-GCM encrypted refresh-token storage in PostgreSQL. Build, deployment, Google Cloud callback registration, and production connection-flow verification remain pending.
 
 ## Milestone 2 — Google authentication and connection discovery
 
-**Status:** OAuth and account/property discovery implemented and live-checked for My Home Closet; multi-user isolation and persisted server-side selections remain unimplemented.
+**Status:** OAuth and account/property discovery are implemented and live-checked for My Home Closet. The production OAuth connection is deployment-wide and shared by report-authorized app users; per-user Google connections and persisted server-side selections are not implemented.
 
 ### Completed changes
 
 - Added a small NestJS API application and root scripts to run/build it alongside the existing Next.js frontend.
 - Added server-side OAuth refresh-token handling with short-lived in-memory access-token caching, concurrent refresh deduplication, timeouts, and safe credential-free error messages.
-- Added a loopback-only OAuth authorization-code flow at `/auth/google/start` and `/auth/google/callback`. It requests offline Ads and GA4 access, validates state, exchanges the code server-side, and displays the refresh token once without logging or storing it.
+- The initial loopback token-copy flow was superseded by the production Super Admin OAuth connection flow described under Milestone 9; refresh tokens are no longer displayed in the browser.
 - Added Google Ads account discovery through `CustomerService.ListAccessibleCustomers`; normalized direct-access customer resource names into IDs.
 - Added descriptive Google Ads account names and discovery of enabled advertiser accounts under accessible manager accounts. Reports and campaign-option requests for discovered child accounts use the manager as `login-customer-id`.
 - Added GA4 property discovery through paginated Analytics Admin API `accountSummaries.list`.
-- Added endpoint guards for an optional dashboard API key, loopback-only default bind, and refusal to bind externally without a key; restricted CORS and Helmet headers.
+- Initially added an optional dashboard API-key guard and loopback-only bind. Milestone 9 replaced the shared-key boundary with app-user sessions and report permissions; CORS and Helmet headers remain.
 - Added selection endpoints that rediscover accessible resources and reject IDs not returned by Google. Selection is validated but not persisted.
 - Added fixture-backed mock mode and `expired-auth` / `permission-denied` mock scenarios. API responses include `mode` so callers can distinguish mock from live.
 - Added `.env.example` and API setup notes; credentials are read only by the API process.
@@ -86,7 +86,7 @@ The workspace initially contained only the project plan and was not a Git checko
 
 ### Architecture notes and limitations
 
-Google Ads `ListAccessibleCustomers` returns directly accessible customers; manager hierarchies are expanded through `customer_client` queries for enabled advertiser descendants. GA4 discovery uses Admin API v1beta summaries with pagination. The current environment configuration represents one server-configured Google identity, not per-user credentials. `DASHBOARD_API_KEY` is an internal shared-key guard, not a user session system; do not expose this API to multiple users until per-user sessions and scoped credential storage exist. The selection endpoint does not persist server-side user state; dashboard selections currently live in the URL.
+Google Ads `ListAccessibleCustomers` returns directly accessible customers; manager hierarchies are expanded through `customer_client` queries for enabled advertiser descendants. GA4 discovery uses Admin API v1beta summaries with pagination. The Google authorization is one shared deployment-level identity stored encrypted in PostgreSQL after the production connection flow is deployed; it is not a per-user Google identity. The selection endpoint does not persist server-side user state; dashboard selections currently live in the URL.
 
 ### Verification
 
@@ -243,7 +243,7 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 
 ## Milestone 9 - Authentication, roles and access control
 
-**Status:** In progress. Core authentication/access-control APIs, database schema/migration, and the first Settings/login UI implementation are being added. Build and local runtime verification remain pending because the PostgreSQL driver could not be fetched from the offline npm cache.
+**Status:** In progress. Core authentication/access-control APIs and the initial Settings/login UI are deployed and production sign-in, password reset, and live reports are confirmed. Role/permission edge-case verification remains. The production OAuth connection flow has been implemented locally but is not yet deployed or live-verified.
 
 ### Requested scope
 
@@ -268,6 +268,8 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 - Added login/first-login password reset UI and Settings controls for roles, permissions, users, one-time credential JSON downloads, role assignment, and password reissue.
 - Replaced the shared dashboard API-key guard with user authentication and Google Ads / GA4 permission enforcement; wired browser API requests to cookies and automatic refresh.
 - Fixed localhost authentication redirects caused by a `localhost` frontend calling a loopback API as `127.0.0.1`; browser verification now shows login succeeds and `/auth/me` returns 200 on the required first-password-reset page.
+- Added a Super Admin-only production Google OAuth connection flow from Settings. It validates CSRF on initiation, stores one-time OAuth state hashes in PostgreSQL, exchanges authorization codes server-side, encrypts the shared refresh token with AES-256-GCM, and never returns or logs the token.
+- Added a token vault migration and a Reporting Sources status/reconnect control. The API prefers the encrypted database token and retains the environment token only as a transition fallback until production connects and removes it.
 - Added `pg` as an API dependency and configured API/migration scripts to load `.env`. PostgreSQL migration and Super Admin bootstrap now run locally.
 
 ### Implementation checks
@@ -276,3 +278,4 @@ The contract-planning slice is complete for mock development and Milestone 4 can
 - `npm run build:api`: passed.
 - Design-taste frontend lint: passed with no banned patterns or warnings.
 - No automated tests were run. Chrome DevTools reproduced the initial login redirect loop and verified the fix: login returns 200 and `/auth/me` returns 200 on the required first-password-reset screen. Dashboard verification remains pending the Super Admin's new password.
+- The new production OAuth flow, migration, and Settings UI have not yet been built or deployed; verify the Google Cloud production callback URI and remove the legacy refresh-token environment variable after the database connection is established.

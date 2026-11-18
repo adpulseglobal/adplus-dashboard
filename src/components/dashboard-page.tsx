@@ -5,6 +5,7 @@ import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type Poi
 import { Activity, ArrowRight, BarChart3, Calculator, CreditCard, LayoutDashboard, LogOut, MousePointer2, Menu, Search, Settings, ShoppingBag, Target, UserRoundCheck, Users, X, Zap } from "lucide-react";
 import { FilterBar, type SelectedSources } from "@/components/filter-bar";
 import { AccessControlSettings } from "@/components/access-control-settings";
+import { GoogleConnectionSettings } from "@/components/google-connection-settings";
 import { apiFetch, apiUrl, getApiError } from "@/lib/api-client";
 import { count } from "@/lib/demo-report";
 import { parseDashboardFiltersFromSearch, serializeDashboardFilters, type DashboardFilters } from "@contracts/dashboard-filters";
@@ -66,7 +67,7 @@ function SettingsWorkspace({ permissions, isSuperAdmin, allowedSources, onSelect
       {tabs.map((tab, index) => <button key={tab.id} id={`settings-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls="settings-tab-panel" tabIndex={activeTab === tab.id ? 0 : -1} className="settings-tab" onClick={() => setSelectedTab(tab.id)} onKeyDown={(event) => handleTabKeyDown(event, index)}>{tab.label}</button>)}
     </div>
     <div id="settings-tab-panel" className="settings-tab-panel" role="tabpanel" aria-labelledby={`settings-tab-${activeTab}`} tabIndex={0}>
-      {activeTab === "sources" && <FilterBar mode="settings" onSelectionChange={onSelectionChange} allowedSources={allowedSources} />}
+      {activeTab === "sources" && <>{isSuperAdmin && <GoogleConnectionSettings />}<FilterBar mode="settings" onSelectionChange={onSelectionChange} allowedSources={allowedSources} /></>}
       {activeTab === "roles" && <AccessControlSettings key="roles" permissions={permissions} isSuperAdmin={isSuperAdmin} view="roles" />}
       {activeTab === "users" && <AccessControlSettings key="users" permissions={permissions} isSuperAdmin={isSuperAdmin} view="users" />}
     </div>

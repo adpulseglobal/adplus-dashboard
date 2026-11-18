@@ -22,12 +22,13 @@ Endpoints:
 - `POST /filters/validate` with a `DashboardFilters` JSON object
 - `POST /reports/google-ads/campaign-performance` with a `DashboardFilters` JSON object and a selected `googleAdsAccountId`
 - `POST /reports/ga4/acquisition` requires a selected Ads customer and a GA4 property linked to that customer; mismatched pairs are rejected.
-- `GET /auth/google/start` to begin local Google authorization
+- `GET /auth/google/status` for Super Admin connection status
+- `POST /auth/google/start` for a Super Admin to begin Google authorization
 - `GET /auth/google/callback` as the OAuth redirect URI
 
 ## Local OAuth authorization
 
-For local development, add `http://localhost:4000/auth/google/callback` as an authorized redirect URI on the Google OAuth **Web application** client. There is no JavaScript origin requirement for this server-side flow. Set `GOOGLE_OAUTH_REDIRECT_URI` to the same exact URI, then open `http://localhost:4000/auth/google/start` in a browser. The callback is loopback-only, checks a random OAuth state cookie, exchanges the authorization code on the API server, and displays only the refresh token for copying into `GOOGLE_OAUTH_REFRESH_TOKEN`. The token is not stored or logged by the API.
+For local development, add `http://localhost:4000/auth/google/callback` as an authorized redirect URI on the Google OAuth **Web application** client and set `GOOGLE_OAUTH_REDIRECT_URI` to that exact URI. Sign in as the local Super Admin, open Settings â†’ Reporting sources, and choose **Connect Google**. The API requires the app session and CSRF token to start, uses a short-lived one-time state value, exchanges the authorization code server-side, encrypts the refresh token with AES-256-GCM, and stores it in PostgreSQL. The token is never returned to the browser or logged. Generate `GOOGLE_TOKEN_ENCRYPTION_KEY` as 32 random bytes encoded in hexadecimal (`openssl rand -hex 32`); keep this key stable and backed up separately from the database because it is required to decrypt the stored connection.
 
 The flow requests Google Ads (`adwords`) and GA4 read-only (`analytics.readonly`) access with offline access and a consent prompt. Configure the OAuth consent screen as External / Testing and add your Google account as a test user. Google sign-in still applies the account's authentication requirements; this local flow replaces OAuth Playground but cannot bypass a passkey requirement. Refresh tokens issued while an external app is in Testing expire after seven days for these scopes.
 
@@ -41,7 +42,9 @@ Filter option routes first validate access to the requested account/property. GA
 
 ## Live Google connections
 
-Set `GOOGLE_CONNECTIONS_MODE=live` and configure `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REFRESH_TOKEN` in the API process environment. Use the same Google Cloud project for the OAuth client and Google Ads API access level. Its project needs access to production accounts (Explorer or higher); Test access only works with test accounts. Add the authorizing Google account to the Ads account, or give a manager account access. Keep OAuth credentials in a local ignored `.env` or a deployment secret store; never prefix them with `NEXT_PUBLIC_`.
+Set `GOOGLE_CONNECTIONS_MODE=live`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, and `GOOGLE_TOKEN_ENCRYPTION_KEY` in the API environment. Do not configure `GOOGLE_OAUTH_REFRESH_TOKEN` for a new deployment; a legacy environment token is read only as a migration fallback until the Super Admin connects Google and removes it. In production, the redirect URI must be HTTPS and must exactly match the URI registered in Google Cloud Console. Use the same Google Cloud project for the OAuth client and Google Ads API access level. Its project needs access to production accounts (Explorer or higher); Test access only works with test accounts. Add the authorizing Google account to the Ads account, or give a manager account access. Keep the OAuth client secret and encryption key in a protected runtime secret file, never in the frontend or source control.
+
+This is one shared Google identity for the deployment. App roles decide who can view Ads or GA4 data, but Google account access is not isolated per AdPulse user.
 
 The OAuth user needs the Google Ads API scope (`https://www.googleapis.com/auth/adwords`) and GA4 Analytics read-only scope. Request offline access to obtain a refresh token. Configure the consent screen and OAuth client in Google Cloud Console, then authorize the Google account that can access the Ads customer and GA4 property. Google Ads account access is project-based as of September 2026; the optional `GOOGLE_ADS_DEVELOPER_TOKEN` setting remains only for compatibility with environments that still supply one.
 

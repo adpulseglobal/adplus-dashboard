@@ -71,6 +71,17 @@ input { caret-color: var(--brand); accent-color: var(--brand); }
 .report-more-filters > summary { min-height: 38px; }
 .report-more-filters .filter-panel { position: absolute; z-index: 25; top: calc(100% + 8px); right: 0; width: min(740px, calc(100vw - var(--sidebar) - 64px)); margin-top: 0; }
 .settings-source-panel { padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.google-connection-panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 16px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.google-connection-copy { min-width: 0; }
+.google-connection-copy h2 { font-size: 16px; font-weight: 600; }
+.google-connection-copy > p { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.google-connection-copy .google-connection-status { display: inline-flex; margin-top: 12px; padding: 4px 9px; border-radius: 999px; background: #f0f1f2; color: #555c62; font-size: 12px; }
+.google-connection-copy .google-connection-status.is-connected { background: #e7f3eb; color: #26734c; }
+.google-connection-copy .google-connection-meta { color: var(--muted); font-size: 12px; }
+.google-connection-feedback { margin-top: 10px; font-size: 13px; }
+.google-connection-feedback.success { color: #26734c; }
+.google-connection-feedback.error { color: #a9142c; }
+.google-connection-button { flex: none; min-height: 42px; }
 .settings-source-header { margin-bottom: 20px; }
 .settings-source-header h2 { font-size: 17px; font-weight: 600; }
 .settings-source-header p { margin-top: 4px; color: var(--muted); font-size: 13px; }
@@ -375,6 +386,8 @@ summary::-webkit-details-marker { display: none; }
   .report-more-filters { grid-column: 1; width: 100%; }
   .report-more-filters .filter-panel { position: static; width: 100%; margin-top: 8px; }
   .settings-source-panel { padding: 18px 16px; }
+  .google-connection-panel { align-items: stretch; flex-direction: column; gap: 16px; padding: 18px 16px; }
+  .google-connection-button { align-self: flex-start; }
   .settings-source-panel .settings-source-fields { grid-template-columns: minmax(0, 1fr); }
   h1 { font-size: 24px; }
   .page-heading p { font-size: 13px; max-width: 31ch; }

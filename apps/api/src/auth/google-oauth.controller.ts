@@ -1,85 +1,92 @@
-import { Controller, Get, Injectable, Req, Res, UseGuards } from "@nestjs/common";
+import { CanActivate, Controller, ExecutionContext, ForbiddenException, Get, Header, Injectable, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
+import { authenticatedRequest, type AuthenticatedRequest, CsrfGuard, SessionGuard } from "./auth.guard";
 import { GoogleOAuthService } from "./google-oauth.service";
 
-const STATE_COOKIE = "adpulse_oauth_state";
+const STATE_COOKIE = "adpulse_google_oauth_state";
 const STATE_MAX_AGE_SECONDS = 600;
 
 @Injectable()
-export class LocalhostOnlyGuard {
-  canActivate(context: { switchToHttp(): { getRequest(): Request } }): boolean {
-    const request = context.switchToHttp().getRequest();
-    const remoteAddress = request.socket.remoteAddress?.toLowerCase() ?? "";
-    const localAddress = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(remoteAddress);
-    let localHost = false;
-    try {
-      localHost = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(`http://${request.headers.host}`).hostname.toLowerCase());
-    } catch {
-      localHost = false;
-    }
-    return localAddress && localHost;
+export class GoogleOAuthAdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    if (!request.user?.isSuperAdmin) throw new ForbiddenException("Only the Super Admin can manage the Google connection.");
+    if (request.user.mustResetPassword) throw new ForbiddenException("Change your temporary password before managing Google connections.");
+    return true;
   }
 }
 
 @Controller("auth/google")
-@UseGuards(LocalhostOnlyGuard)
 export class GoogleOAuthController {
   constructor(private readonly oauth: GoogleOAuthService) {}
 
-  @Get("start")
-  start(@Res() response: Response): void {
+  @Get("status")
+  @Header("Cache-Control", "no-store")
+  @UseGuards(SessionGuard, GoogleOAuthAdminGuard)
+  status() {
+    return this.oauth.getConnectionStatus();
+  }
+
+  @Post("start")
+  @Header("Cache-Control", "no-store")
+  @UseGuards(SessionGuard, GoogleOAuthAdminGuard, CsrfGuard)
+  async start(@Req() request: Request, @Res({ passthrough: true }) response: Response): Promise<{ authorizationUrl: string }> {
     const state = randomBytes(32).toString("base64url");
+    const authorizationUrl = this.oauth.getAuthorizationUrl(state);
+    await this.oauth.createState(state, authenticatedRequest(request).id);
     response.setHeader("Set-Cookie", makeStateCookie(state));
-    response.setHeader("Cache-Control", "no-store");
-    response.redirect(this.oauth.getAuthorizationUrl(state));
+    return { authorizationUrl };
   }
 
   @Get("callback")
+  @Header("Cache-Control", "no-store")
   async callback(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const returnedState = queryString(request.query.state);
-    const savedState = getCookie(request, STATE_COOKIE);
-    response.setHeader("Cache-Control", "no-store");
     response.setHeader("Pragma", "no-cache");
     response.setHeader("Referrer-Policy", "no-referrer");
     response.setHeader("Set-Cookie", clearStateCookie());
 
+    const returnedState = queryString(request.query.state);
+    const savedState = getCookie(request, STATE_COOKIE);
     if (!returnedState || !savedState || !sameSecret(returnedState, savedState)) {
-      sendPage(response, 400, "Authorization could not be verified", "The OAuth state check failed. Start again from the local authorization link.");
+      redirectToSettings(response, "error");
       return;
     }
 
-    const providerError = queryString(request.query.error);
-    if (providerError) {
-      sendPage(response, 400, "Authorization was not completed", "Google did not grant access. Start again if you want to retry.");
+    const initiatedBy = await this.oauth.consumeState(returnedState);
+    if (!initiatedBy || queryString(request.query.error)) {
+      redirectToSettings(response, "error");
       return;
     }
 
     const code = queryString(request.query.code);
     if (!code) {
-      sendPage(response, 400, "Authorization code missing", "Google returned no authorization code. Start again from the local authorization link.");
+      redirectToSettings(response, "error");
       return;
     }
 
     try {
       const refreshToken = await this.oauth.exchangeAuthorizationCode(code);
       if (!refreshToken) {
-        sendPage(response, 400, "No refresh token returned", "Google did not return a refresh token. Remove AdPulse from your Google Account third-party connections, then restart authorization.");
+        redirectToSettings(response, "error");
         return;
       }
-      sendTokenPage(response, refreshToken);
+      await this.oauth.saveRefreshToken(refreshToken, initiatedBy);
+      redirectToSettings(response, "connected");
     } catch {
-      sendPage(response, 502, "Token exchange failed", "Google could not exchange the authorization code. Check the OAuth client and exact localhost redirect URI, then try again.");
+      redirectToSettings(response, "error");
     }
   }
 }
 
 function makeStateCookie(state: string): string {
-  return `${STATE_COOKIE}=${state}; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=${STATE_MAX_AGE_SECONDS}`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${STATE_COOKIE}=${state}; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=${STATE_MAX_AGE_SECONDS}${secure}`;
 }
 
 function clearStateCookie(): string {
-  return `${STATE_COOKIE}=; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=0`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${STATE_COOKIE}=; HttpOnly; SameSite=Lax; Path=/auth/google; Max-Age=0${secure}`;
 }
 
 function getCookie(request: Request, name: string): string | undefined {
@@ -97,19 +104,9 @@ function sameSecret(first: string, second: string): boolean {
   return firstBytes.length === secondBytes.length && timingSafeEqual(firstBytes, secondBytes);
 }
 
-function sendTokenPage(response: Response, refreshToken: string): void {
-  const safeToken = escapeHtml(refreshToken);
-  sendHtmlPage(response, 200, "Authorization complete", `<p>Copy this refresh token into the API environment as <code>GOOGLE_OAUTH_REFRESH_TOKEN</code>. Keep it secret.</p><label for="refresh-token">Refresh token</label><br><textarea id="refresh-token" readonly rows="4" cols="72">${safeToken}</textarea>`);
-}
-
-function sendPage(response: Response, status: number, title: string, message: string): void {
-  sendHtmlPage(response, status, title, `<p>${escapeHtml(message).replaceAll("\n", "<br>")}</p>`);
-}
-
-function sendHtmlPage(response: Response, status: number, title: string, body: string): void {
-  response.status(status).type("html").send(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · AdPulse</title><body><h1>${escapeHtml(title)}</h1>${body}</body></html>`);
-}
-
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+function redirectToSettings(response: Response, status: "connected" | "error"): void {
+  const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  const destination = new URL("/settings", webOrigin);
+  destination.searchParams.set("googleConnection", status);
+  response.redirect(303, destination.toString());
 }

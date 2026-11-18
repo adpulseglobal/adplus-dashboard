@@ -1,25 +1,41 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { createHash } from "node:crypto";
+import { DatabaseService } from "../database/database.service";
+import { GoogleTokenVault, type GoogleConnectionStatus } from "../providers/google-token-vault.service";
 
 interface GoogleTokenResponse {
   refresh_token?: string;
-  error?: string;
 }
 
 @Injectable()
 export class GoogleOAuthService {
-  getRedirectUri(): string {
-    const port = process.env.API_PORT ?? "4000";
-    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI ?? `http://localhost:${port}/auth/google/callback`;
-    let parsed: URL;
-    try {
-      parsed = new URL(redirectUri);
-    } catch {
-      throw new ServiceUnavailableException("GOOGLE_OAUTH_REDIRECT_URI must be a valid local callback URL.");
-    }
-    if (parsed.protocol !== "http:" || !isLoopbackHost(parsed.hostname) || parsed.pathname !== "/auth/google/callback" || parsed.search || parsed.hash) {
-      throw new ServiceUnavailableException("GOOGLE_OAUTH_REDIRECT_URI must use the local /auth/google/callback address.");
-    }
-    return parsed.toString();
+  constructor(private readonly database: DatabaseService, private readonly tokenVault: GoogleTokenVault) {}
+
+  async createState(state: string, userId: string): Promise<void> {
+    this.tokenVault.assertEncryptionConfigured();
+    const stateHash = hashState(state);
+    await this.database.query("DELETE FROM app_google_oauth_states WHERE expires_at < now() OR consumed_at < now() - interval '1 day'");
+    await this.database.query(
+      "INSERT INTO app_google_oauth_states(state_hash, initiated_by, expires_at) VALUES ($1, $2, now() + interval '10 minutes')",
+      [stateHash, userId],
+    );
+  }
+
+  async consumeState(state: string): Promise<string | undefined> {
+    const result = await this.database.query<{ initiated_by: string }>(
+      `UPDATE app_google_oauth_states
+       SET consumed_at = now()
+       FROM app_users u
+       WHERE app_google_oauth_states.state_hash = $1
+         AND app_google_oauth_states.consumed_at IS NULL
+         AND app_google_oauth_states.expires_at > now()
+         AND u.id = app_google_oauth_states.initiated_by
+         AND u.is_super_admin = true
+         AND u.disabled_at IS NULL
+       RETURNING app_google_oauth_states.initiated_by`,
+      [hashState(state)],
+    );
+    return result.rows[0]?.initiated_by;
   }
 
   getAuthorizationUrl(state: string): string {
@@ -56,19 +72,50 @@ export class GoogleOAuthService {
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
-      throw new ServiceUnavailableException("Google OAuth token service is unavailable. Try the local authorization again.");
+      throw new ServiceUnavailableException("Google OAuth token service is unavailable. Try connecting Google again.");
     }
     const result = await response.json().catch(() => ({})) as GoogleTokenResponse;
-    if (!response.ok) throw new ServiceUnavailableException("Google did not accept the authorization code. Check the OAuth client and exact localhost redirect URI, then try again.");
+    if (!response.ok) throw new ServiceUnavailableException("Google did not accept the authorization code. Check the OAuth client and exact production callback URI, then retry.");
     return result.refresh_token;
+  }
+
+  saveRefreshToken(refreshToken: string, connectedBy: string): Promise<void> {
+    return this.tokenVault.saveRefreshToken(refreshToken, connectedBy);
+  }
+
+  getConnectionStatus(): Promise<GoogleConnectionStatus> {
+    return this.tokenVault.getStatus();
+  }
+
+  private getRedirectUri(): string {
+    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:4000/auth/google/callback");
+    let parsed: URL;
+    try {
+      parsed = new URL(redirectUri);
+    } catch {
+      throw new ServiceUnavailableException("GOOGLE_OAUTH_REDIRECT_URI must be configured as the exact Google OAuth callback URL.");
+    }
+    const validPath = parsed.pathname === "/auth/google/callback" && !parsed.search && !parsed.hash && !parsed.username && !parsed.password;
+    const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
+    const validTransport = process.env.NODE_ENV === "production"
+      ? parsed.protocol === "https:" && parsed.origin === webOrigin
+      : parsed.protocol === "https:" || (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname));
+    if (!validPath || !validTransport) {
+      throw new ServiceUnavailableException("GOOGLE_OAUTH_REDIRECT_URI must use HTTPS in production and end with /auth/google/callback.");
+    }
+    return parsed.toString();
   }
 
   private getClientCredentials(): { clientId: string; clientSecret: string } {
     const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-    if (!clientId || !clientSecret) throw new ServiceUnavailableException("Configure GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before starting local authorization.");
+    if (!clientId || !clientSecret) throw new ServiceUnavailableException("Configure GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before connecting Google.");
     return { clientId, clientSecret };
   }
+}
+
+function hashState(state: string): string {
+  return createHash("sha256").update(state).digest("hex");
 }
 
 function isLoopbackHost(hostname: string): boolean {
