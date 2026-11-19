@@ -186,8 +186,9 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     <details className="filter-disclosure report-more-filters" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
     <summary><span className="filter-toggle-label">More filters{selectedCount ? ` · ${selectedCount}` : ""}</span><ChevronDown size={14} aria-hidden="true" /></summary>
     <section className="filter-panel" aria-label="Additional report filters">
-    {allowedSources.googleAds && !draft.googleAdsAccountId && <p className="ads-account-filter-hint" role="status">Select a Google Ads account in Settings to filter by campaign and campaign type.</p>}
-    <details className="advanced-filters">
+    <div className="filter-panel-top-row">
+      {allowedSources.googleAds && !draft.googleAdsAccountId && <p className="ads-account-filter-hint" role="status">Select a Google Ads account to filter campaigns and types.</p>}
+      <details className="advanced-filters">
       <summary>More filters <span className="filter-count">{selectedCount || "None selected"}</span><ChevronDown size={14} /></summary>
       <div className="advanced-filter-grid">
         {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={draft.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!draft.googleAdsAccountId} emptyLabel={draft.googleAdsAccountId ? "No campaigns found" : ""} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
@@ -198,7 +199,8 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
         <MultiSelect title="GA4 landing page" values={draft.landingPages} options={landingPageOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No landing pages found" : "Choose a GA4 property in Settings first"} onChange={(value, selected) => updateList("landingPages", value, selected)} /></>}
       </div>
       {ga4Options?.truncated && <p className="filter-hint">GA4 options show the top 1,000 values from the last 90 days.</p>}
-    </details>
+      </details>
+    </div>
     {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
     {warnings.map((warning) => <div className="filter-message warning" role="status" key={warning}>{warning}</div>)}
     </section>
