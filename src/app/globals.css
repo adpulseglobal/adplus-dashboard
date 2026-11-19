@@ -244,6 +244,7 @@ summary::-webkit-details-marker { display: none; }
 .filter-disclosure > summary .filter-toggle-label { color: var(--foreground); font-size: 13px; font-weight: 500; text-decoration: none; }
 .filter-disclosure > summary svg { color: var(--brand); transition: transform 160ms ease-out; }
 .filter-panel { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 8px; background: var(--surface); box-shadow: 0 4px 14px #2024270a; } /* taste-skill-ignore shadow: expanded filter panel floats over the dashboard content. */
+.ads-account-filter-hint { max-width: 52ch; margin: 0 0 10px auto; color: var(--muted); font-size: 12px; line-height: 1.45; text-align: right; }
 .filter-primary-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr 1.3fr; gap: 12px; }
 .filter-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; color: var(--muted); font-size: 13px; }
 .filter-field input, .filter-field select, .multi-select > summary { height: 36px; min-width: 0; width: 100%; border: 1px solid var(--control); background: #fff; padding: 0 8px; color: var(--foreground); font-size: 12px; }
