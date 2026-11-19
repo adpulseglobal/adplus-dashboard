@@ -98,6 +98,7 @@ jobs:
             echo "New frontend image does not contain the expected dashboard bundle."
             exit 1
           fi
+          echo "Built frontend image $built_web_image contains the expected dashboard bundle for $actual_sha."
 
           "${compose[@]}" --profile tools run --rm migrate
           "${compose[@]}" up -d --force-recreate api web
@@ -114,6 +115,23 @@ jobs:
             echo "Frontend container is not using the image built by this deployment."
             exit 1
           fi
+          echo "Running frontend container $web_container uses image $running_web_image."
+
+          running_bundle="$(sudo -n docker exec "$web_container" sh -lc \
+            "grep -Rl 'Performance Dashboard' /app/.next/static/chunks | head -1")"
+          if [ -z "$running_bundle" ]; then
+            echo "Running frontend container does not contain the expected dashboard bundle."
+            exit 1
+          fi
+          echo "Verified updated dashboard bundle in running container: $running_bundle"
+
+          bundle_url="${running_bundle#/app}"
+          served_bundle="$(curl -fsS "http://127.0.0.1:3000$bundle_url")"
+          if [[ "$served_bundle" != *"Performance Dashboard"* ]]; then
+            echo "Frontend HTTP endpoint is not serving the expected dashboard bundle."
+            exit 1
+          fi
+          echo "Verified updated dashboard bundle is served over HTTP: $bundle_url"
 
           web_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login)"
           if [ "$web_code" != "200" ]; then
