@@ -100,7 +100,9 @@ jobs:
           fi
           echo "Built frontend image $built_web_image contains the expected dashboard bundle for $actual_sha."
 
-          "${compose[@]}" --profile tools run --rm migrate
+          # Do not let the one-off container inherit the SSH stdin stream;
+          # stdin contains the remainder of this deployment script.
+          "${compose[@]}" --profile tools run --rm --no-TTY --interactive=false migrate
           "${compose[@]}" up -d --force-recreate api web
           "${compose[@]}" ps
 
