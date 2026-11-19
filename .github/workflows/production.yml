@@ -106,6 +106,20 @@ jobs:
           "${compose[@]}" up -d --force-recreate api web
           "${compose[@]}" ps
 
+          web_code=""
+          for attempt in $(seq 1 30); do
+            web_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)"
+            if [ "$web_code" = "200" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$web_code" != "200" ]; then
+            echo "Frontend did not become ready; /login returned HTTP ${web_code:-no response}."
+            exit 1
+          fi
+          echo "Frontend is ready: /login returned HTTP 200."
+
           web_container="$("${compose[@]}" ps -q web)"
           if [ -z "$web_container" ]; then
             echo "Frontend container was not created."
@@ -134,12 +148,6 @@ jobs:
             exit 1
           fi
           echo "Verified updated dashboard bundle is served over HTTP: $bundle_url"
-
-          web_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login)"
-          if [ "$web_code" != "200" ]; then
-            echo "Frontend health check failed with HTTP $web_code."
-            exit 1
-          fi
 
           api_code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/auth/me)"
           case "$api_code" in
