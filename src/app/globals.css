@@ -244,14 +244,15 @@ summary::-webkit-details-marker { display: none; }
 .filter-disclosure > summary .filter-toggle-label { color: var(--foreground); font-size: 13px; font-weight: 500; text-decoration: none; }
 .filter-disclosure > summary svg { color: var(--brand); transition: transform 160ms ease-out; }
 .filter-panel { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 8px; background: var(--surface); box-shadow: 0 4px 14px #2024270a; } /* taste-skill-ignore shadow: expanded filter panel floats over the dashboard content. */
-.filter-panel-top-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.ads-account-filter-hint { flex: 1 1 auto; max-width: 52ch; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.filter-guidance { display: grid; flex: 1 1 auto; gap: 4px; max-width: 52ch; min-width: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.filter-guidance > span { display: block; }
+.advanced-filter-summary-label { display: inline-flex; align-items: center; gap: 8px; flex: none; margin-left: auto; white-space: nowrap; }
 .filter-primary-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr 1.3fr; gap: 12px; }
 .filter-field { display: flex; flex-direction: column; min-width: 0; gap: 6px; color: var(--muted); font-size: 13px; }
 .filter-field input, .filter-field select, .multi-select > summary { height: 36px; min-width: 0; width: 100%; border: 1px solid var(--control); background: #fff; padding: 0 8px; color: var(--foreground); font-size: 12px; }
 .filter-field select { text-overflow: ellipsis; cursor: pointer; }
-.advanced-filters { flex: none; margin: 0 0 0 auto; }
-.advanced-filters > summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; font-size: 12px; width: fit-content; }
+.advanced-filters { width: 100%; min-width: 0; margin: 0; }
+.advanced-filters > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 28px; cursor: pointer; font-size: 12px; width: 100%; min-width: 0; }
 .filter-count { color: var(--muted); }
 .advanced-filters[open] > summary > svg { transform: rotate(180deg); }
 .advanced-filter-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 10px; }
@@ -394,10 +395,9 @@ summary::-webkit-details-marker { display: none; }
   .filter-date-range .filter-field input { height: 42px; }
   .report-more-filters { grid-column: 1; width: 100%; }
   .report-more-filters .filter-panel { position: static; width: 100%; margin-top: 8px; }
-  .filter-panel-top-row { align-items: stretch; flex-direction: column; gap: 8px; }
-  .ads-account-filter-hint { max-width: none; }
-  .advanced-filters { margin-left: 0; }
-  .advanced-filters > summary { justify-content: space-between; width: 100%; }
+  .advanced-filters > summary { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .filter-guidance { max-width: none; }
+  .advanced-filter-summary-label { margin-left: 0; }
   .settings-source-panel { padding: 18px 16px; }
   .google-connection-panel { align-items: stretch; flex-direction: column; gap: 16px; padding: 18px 16px; }
   .google-connection-button { align-self: flex-start; }
