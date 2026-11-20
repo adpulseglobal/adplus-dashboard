@@ -156,7 +156,7 @@ h1 { font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -.6px;
 /* At 1440px: 1440 - 224 sidebar - 64 gutters = 1152 canvas.
    4 KPI columns divide the full 1152; chart + sources = 692 + 20 + 440. */
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 14px; margin: 20px 0; }
-.metric-card { min-width: 0; padding: 18px; background: var(--surface); color: var(--foreground); border: 1px solid transparent; border-radius: 10px; }
+.metric-card { min-width: 0; padding: 18px; background: var(--surface); color: var(--foreground); border-radius: 10px; }
 .metric-card.metric-lead {
   background: radial-gradient(ellipse at 0% 100%, #b44960 0%, transparent 68%), linear-gradient(145deg, #65172c, #942944);
   color: #fff;
@@ -213,7 +213,7 @@ h1 { font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -.6px;
 .bar-chart-empty { padding: 18px 24px 22px; color: var(--muted); font-size: 13px; }
 .report-detail { display: block; margin: 2px 0 6px; color: var(--muted); font-size: 12px; }
 .report-trend .chart-wrap { height: 196px; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; min-width: 0; overflow: hidden; }
+.panel { background: var(--surface); border-radius: 12px; min-width: 0; overflow: hidden; }
 .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 0; }
 .panel-header h2 { font-size: 16px; font-weight: 500; letter-spacing: -.25px; }
 .panel-header p { color: var(--muted); font-size: 12px; margin-top: 3px; }
