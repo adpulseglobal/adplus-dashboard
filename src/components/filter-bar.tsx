@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, CircleAlert } from "lucide-react";
+import { CalendarDays, ChevronDown, CircleAlert, SlidersHorizontal, X } from "lucide-react";
 import { apiFetch, apiUrl } from "@/lib/api-client";
 import {
   CAMPAIGN_TYPES, DEVICE_CATEGORIES, defaultDashboardFilters, getFilterWarnings,
@@ -51,6 +51,21 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     window.addEventListener("popstate", restoreFromUrl);
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.setTimeout(() => document.querySelector<HTMLButtonElement>(".filter-drawer-close")?.focus(), 0);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [filtersOpen]);
 
   useEffect(() => {
     if (!allowedSources.googleAds) { setAccounts([]); return; }
@@ -185,41 +200,56 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
   </section>;
 
+  const campaignNames = new Map((adsOptions?.campaigns ?? []).map(({ id, name }) => [id, name]));
+  const chips: Array<{ key: string; label: string; remove: () => void }> = [
+    ...filters.campaignIds.map((id) => ({ key: `campaign:${id}`, label: `Campaign: ${campaignNames.get(id) ?? id}`, remove: () => updateList("campaignIds", id, false) })),
+    ...filters.campaignTypes.map((type) => ({ key: `type:${type}`, label: `Type: ${formatEnum(type)}`, remove: () => updateList("campaignTypes", type as CampaignType, false) })),
+    ...filters.devices.map((device) => ({ key: `device:${device}`, label: `Device: ${titleCase(device)}`, remove: () => updateList("devices", device as DeviceCategory, false) })),
+    ...filters.channelGroups.map((value) => ({ key: `channel:${value}`, label: `Channel: ${value}`, remove: () => updateList("channelGroups", value, false) })),
+    ...filters.sourceMediums.map((value) => ({ key: `source:${value}`, label: `Source: ${value}`, remove: () => updateList("sourceMediums", value, false) })),
+    ...filters.landingPages.map((value) => ({ key: `landing:${value}`, label: `Landing: ${value}`, remove: () => updateList("landingPages", value, false) })),
+  ];
+  const clearAll = () => commit({ ...filters, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [] });
+  const dateFields = <div className="filter-date-range">
+    <label className="filter-field"><span>From</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={filters.dateRange.startDate} onChange={(event) => commit({ ...filters, dateRange: { ...filters.dateRange, startDate: event.target.value } })} /></label>
+    <span className="filter-date-separator" aria-hidden="true">to</span>
+    <label className="filter-field"><span>To</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={filters.dateRange.endDate} onChange={(event) => commit({ ...filters, dateRange: { ...filters.dateRange, endDate: event.target.value } })} /></label>
+  </div>;
+  const campaignAndDimensionFilters = <div className="advanced-filter-grid">
+    {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={filters.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!filters.googleAdsAccountId} emptyLabel={filters.googleAdsAccountId ? "No campaigns found" : "Choose an Ads account first"} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
+    <MultiSelect title="Campaign types" values={filters.campaignTypes} options={campaignTypeOptions.map((item) => ({ value: item, label: formatEnum(item) }))} disabled={!filters.googleAdsAccountId} emptyLabel={filters.googleAdsAccountId ? "No campaign types found" : "Choose an Ads account first"} onChange={(type, selected) => updateList("campaignTypes", type as CampaignType, selected)} /></>}
+    <MultiSelect title="Devices" values={filters.devices} options={DEVICE_CATEGORIES.map((item) => ({ value: item, label: titleCase(item) }))} onChange={(device, selected) => updateList("devices", device as DeviceCategory, selected)} />
+    {allowedSources.ga4 && <><MultiSelect title="GA4 channel group" values={filters.channelGroups} options={channelOptions.map((item) => ({ value: item, label: item }))} disabled={!filters.ga4PropertyId} emptyLabel={filters.ga4PropertyId ? "No channel groups found" : "Choose a GA4 property first"} onChange={(value, selected) => updateList("channelGroups", value, selected)} />
+    <MultiSelect title="GA4 source / medium" values={filters.sourceMediums} options={sourceMediumOptions.map((item) => ({ value: item, label: item }))} disabled={!filters.ga4PropertyId} emptyLabel={filters.ga4PropertyId ? "No source / medium values found" : "Choose a GA4 property first"} onChange={(value, selected) => updateList("sourceMediums", value, selected)} />
+    <MultiSelect title="GA4 landing page" values={filters.landingPages} options={landingPageOptions.map((item) => ({ value: item, label: item }))} disabled={!filters.ga4PropertyId} emptyLabel={filters.ga4PropertyId ? "No landing pages found" : "Choose a GA4 property first"} onChange={(value, selected) => updateList("landingPages", value, selected)} /></>}
+  </div>;
+
   return <div className="report-filter-controls">
-    <div className="filter-date-range">
-      {appliedPeriod && <span className="snapshot-period" aria-label={`Applied date range: ${appliedPeriod}`}><CalendarDays size={13} aria-hidden="true" />{appliedPeriod}</span>}
-      <label className="filter-field"><span className="sr-only">From</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={draft.dateRange.startDate} onChange={(event) => commit({ ...draft, dateRange: { ...draft.dateRange, startDate: event.target.value } })} /></label>
-      <span className="filter-date-separator" aria-hidden="true">to</span>
-      <label className="filter-field"><span className="sr-only">To</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={draft.dateRange.endDate} onChange={(event) => commit({ ...draft, dateRange: { ...draft.dateRange, endDate: event.target.value } })} /></label>
-    </div>
-    <details className="filter-disclosure report-more-filters" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
-    <summary><span className="filter-toggle-label">More filters{selectedCount ? ` · ${selectedCount}` : ""}</span><ChevronDown size={14} aria-hidden="true" /></summary>
-    <section className="filter-panel" aria-label="Additional report filters">
-    <details className="advanced-filters">
-      <summary>
-        {(allowedSources.googleAds && !draft.googleAdsAccountId || allowedSources.ga4 && !draft.ga4PropertyId) && <span className="filter-guidance">
-          {allowedSources.googleAds && !draft.googleAdsAccountId && <span>Select a Google Ads account to filter campaigns and types.</span>}
-          {allowedSources.ga4 && !draft.ga4PropertyId && <span>Select a GA4 property to filter channels, sources, and landing pages.</span>}
-        </span>}
-        <span className="advanced-filter-summary-label">More filters <span className="filter-count">{selectedCount || "None selected"}</span><ChevronDown size={14} /></span>
-      </summary>
-      <div className="advanced-filter-grid">
-        {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={draft.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!draft.googleAdsAccountId} emptyLabel={draft.googleAdsAccountId ? "No campaigns found" : ""} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
-        <MultiSelect title="Campaign types" values={draft.campaignTypes} options={campaignTypeOptions.map((item) => ({ value: item, label: formatEnum(item) }))} disabled={!draft.googleAdsAccountId} emptyLabel={draft.googleAdsAccountId ? "No campaign types found" : ""} onChange={(type, selected) => updateList("campaignTypes", type as CampaignType, selected)} /></>}
-        <MultiSelect title="Devices" values={draft.devices} options={DEVICE_CATEGORIES.map((item) => ({ value: item, label: titleCase(item) }))} onChange={(device, selected) => updateList("devices", device as DeviceCategory, selected)} />
-        {allowedSources.ga4 && <><MultiSelect title="GA4 channel group" values={draft.channelGroups} options={channelOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No channel groups found" : ""} onChange={(value, selected) => updateList("channelGroups", value, selected)} />
-        <MultiSelect title="GA4 source / medium" values={draft.sourceMediums} options={sourceMediumOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No source / medium values found" : ""} onChange={(value, selected) => updateList("sourceMediums", value, selected)} />
-        <MultiSelect title="GA4 landing page" values={draft.landingPages} options={landingPageOptions.map((item) => ({ value: item, label: item }))} disabled={!draft.ga4PropertyId} emptyLabel={draft.ga4PropertyId ? "No landing pages found" : ""} onChange={(value, selected) => updateList("landingPages", value, selected)} /></>}
+    <div className="filter-toolbar">
+      <div className="selected-filter-chips" aria-label="Selected filters">
+        {chips.length === 0 ? <span className="no-selected-filters">No filters selected</span> : chips.map((chip) => <span className="selected-filter-chip" key={chip.key}>{chip.label}<button type="button" aria-label={`Remove ${chip.label}`} onClick={chip.remove}><X size={13} /></button></span>)}
+        {chips.length > 0 && <button type="button" className="clear-all-filters" onClick={clearAll}>Clear all</button>}
       </div>
-      {ga4Options?.truncated && <p className="filter-hint">GA4 options show the top 1,000 values from the last 90 days.</p>}
-    </details>
-    {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
-    {warnings.map((warning) => <div className="filter-message warning" role="status" key={warning}>{warning}</div>)}
-    </section>
-    </details>
-    {(optionError || ga4AccountsError) && <div className="filter-errors" aria-label="Connection errors">
-      {optionError && <InlineError>{optionError}</InlineError>}
-      {ga4AccountsError && <InlineError>{ga4AccountsError}</InlineError>}
+      <button type="button" className="open-filter-drawer" aria-expanded={filtersOpen} aria-controls="report-filter-drawer" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={15} />More filters{selectedCount > 0 && <span>{selectedCount}</span>}</button>
+    </div>
+    {filtersOpen && <div className="filter-drawer-layer">
+      <button className="filter-drawer-backdrop" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
+      <aside id="report-filter-drawer" className="filter-drawer" role="dialog" aria-modal="true" aria-labelledby="filter-drawer-title">
+        <header className="filter-drawer-header"><div><h2 id="filter-drawer-title">Filters</h2><p>Changes apply as you make them.</p></div><button type="button" className="filter-drawer-close" aria-label="Close filters" onClick={() => setFiltersOpen(false)}><X size={18} /></button></header>
+        <div className="filter-drawer-content">
+          <section className="filter-drawer-section"><h3>Date range</h3>{dateFields}</section>
+          {(allowedSources.googleAds || allowedSources.ga4) && <section className="filter-drawer-section"><h3>Reporting sources</h3>{sourceSelectionFields}</section>}
+          <section className="filter-drawer-section"><h3>Campaigns and dimensions</h3>
+            {(allowedSources.googleAds && !filters.googleAdsAccountId || allowedSources.ga4 && !filters.ga4PropertyId) && <p className="filter-guidance">{allowedSources.googleAds && !filters.googleAdsAccountId ? "Choose a Google Ads account to filter campaigns and types. " : ""}{allowedSources.ga4 && !filters.ga4PropertyId ? "Choose a GA4 property to filter channels, sources, and landing pages." : ""}</p>}
+            {campaignAndDimensionFilters}
+            {ga4Options?.truncated && <p className="filter-hint">GA4 options show the top 1,000 values from the last 90 days.</p>}
+          </section>
+          {issues.length > 0 && <div className="filter-message error" role="alert">{issues.map((issue) => issue.message).join(" ")}</div>}
+          {warnings.map((warning) => <div className="filter-message warning" role="status" key={warning}>{warning}</div>)}
+          {(optionError || ga4AccountsError) && <div className="filter-errors" aria-label="Connection errors">{optionError && <InlineError>{optionError}</InlineError>}{ga4AccountsError && <InlineError>{ga4AccountsError}</InlineError>}</div>}
+        </div>
+        <footer className="filter-drawer-footer"><button type="button" className="filter-clear-button" disabled={chips.length === 0} onClick={clearAll}>Clear all filters</button><button type="button" className="filter-done-button" onClick={() => setFiltersOpen(false)}>Done</button></footer>
+      </aside>
     </div>}
   </div>;
 }
