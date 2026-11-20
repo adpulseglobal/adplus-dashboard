@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Activity, ArrowRight, BarChart3, Calculator, CreditCard, LayoutDashboard, LogOut, MousePointer2, Menu, Search, Settings, ShoppingBag, Target, UserRoundCheck, Users, X, Zap } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, LayoutDashboard, LogOut, Menu, Search, Settings, X } from "lucide-react";
 import { FilterBar, type SelectedSources } from "@/components/filter-bar";
 import { AccessControlSettings } from "@/components/access-control-settings";
 import { GoogleConnectionSettings } from "@/components/google-connection-settings";
 import { apiFetch, apiUrl, getApiError } from "@/lib/api-client";
 import { count } from "@/lib/demo-report";
-import { parseDashboardFiltersFromSearch, serializeDashboardFilters, type DashboardFilters } from "@contracts/dashboard-filters";
+import { parseDashboardFiltersFromSearch, type DashboardFilters } from "@contracts/dashboard-filters";
 
 type Section = "overview" | "google-ads" | "ga4" | "settings";
 type SourceLoadState = "idle" | "loading" | "error" | "ready";
@@ -137,11 +137,10 @@ function ReportState({ state, message }: { state: "loading" | "error" | "empty";
   return <section className="panel" role={state === "error" ? "alert" : "status"} style={{ padding: 24, marginTop: 20 }}><strong>{state === "loading" ? "Loading report…" : state === "empty" ? "Choose a reporting source" : "Report unavailable"}</strong><p style={{ marginBottom: 0, color: "var(--muted)" }}>{message}</p></section>;
 }
 
-function OverviewSourceSection({ title, state, mode, period, error, emptyMessage, action, children }: { title: string; state: SourceLoadState; mode?: "live" | "mock"; period?: { startDate: string; endDate: string }; error: string; emptyMessage: string; action?: ReactNode; children: ReactNode }) {
+function OverviewSourceSection({ title, state, mode, period, error, emptyMessage, children }: { title: string; state: SourceLoadState; mode?: "live" | "mock"; period?: { startDate: string; endDate: string }; error: string; emptyMessage: string; children: ReactNode }) {
   const status = state === "ready" ? mode === "mock" ? "Sample data" : "Live data" : state === "loading" ? "Loading" : state === "error" ? "Unavailable" : "Not selected";
   return <section className="overview-source-section" aria-label={title}>
     <header className="overview-source-header"><div><h2>{title}</h2><p>{period ? formatPeriod(period) : "Selected report filters"}</p></div><span className={`overview-source-status ${state === "error" ? "is-error" : state === "ready" && mode === "live" ? "is-live" : ""}`}>{status}</span></header>
-    {action}
     {state === "ready" ? children : state === "loading" ? <ReportState state="loading" message={`Fetching ${title} for the selected date range.`} /> : state === "error" ? <ReportState state="error" message={error || `${title} data could not be loaded.`} /> : <ReportState state="empty" message={emptyMessage} />}
   </section>;
 }
@@ -218,25 +217,16 @@ function chartLabel(value: string) {
   return value.toLowerCase().split("_").map((word) => word ? word[0].toUpperCase() + word.slice(1) : word).join(" ");
 }
 
-const metricIcons = {
-  "Ad spend": CreditCard,
-  Clicks: MousePointer2,
-  Conversions: ShoppingBag,
-  "Cost per conversion": Calculator,
-  Sessions: BarChart3,
-  Users,
-  "Engaged sessions": UserRoundCheck,
-  "Key events": Zap,
-} as const;
-
 function MetricCards({ items }: { items: Array<{ title: string; value: string; note: string; lead?: boolean }> }) {
-  return <section className="metrics-grid" aria-label="Report performance totals">{items.map((metric) => {
-    const Icon = metricIcons[metric.title as keyof typeof metricIcons] ?? Target;
-    return <article className={`metric-card ${metric.lead ? "metric-lead" : ""}`} key={metric.title}>
-      <div className="metric-card-heading"><h2 className="metric-title">{metric.title}</h2><span className="metric-icon"><Icon size={17} strokeWidth={1.8} aria-hidden="true" /></span></div>
-      <div className="metric-value">{metric.value}</div><p className="metric-note">{metric.note}</p>
-    </article>;
-  })}</section>;
+  return <section className="metrics-grid" aria-label="Report performance totals">
+    {items.map(({ title, value, note, lead }) => (
+      <article className={lead ? "metric-card metric-lead" : "metric-card"} key={title}>
+        <h2 className="metric-title">{title}</h2>
+        <div className="metric-value">{value}</div>
+        <p className="metric-note">{note}</p>
+      </article>
+    ))}
+  </section>;
 }
 
 export function DashboardPage({ section }: { section: Section }) {
@@ -358,17 +348,6 @@ export function DashboardPage({ section }: { section: Section }) {
       window.location.assign("/login");
     } catch { setLogoutError("Could not reach the server. Check your connection and try signing out again."); }
   };
-  const selectedFilters = parseDashboardFiltersFromSearch(query);
-  const adsAccountSelected = allowedSources.googleAds && selectedFilters.success && Boolean(selectedFilters.data.googleAdsAccountId);
-  const ga4AdsScope = selectedFilters.success && selectedFilters.data.ga4AdsScope;
-  const toggleGa4AdsScope = () => {
-    const current = parseDashboardFiltersFromSearch(window.location.search);
-    if (!current.success || !current.data.googleAdsAccountId) return;
-    const next = { ...current.data, ga4AdsScope: !current.data.ga4AdsScope };
-    window.history.replaceState(null, "", serializeDashboardFilters(window.location.pathname, next));
-    window.dispatchEvent(new Event("adpulse:filters-changed"));
-  };
-  const adsScopeControl = <div className="ga4-ads-scope"><div><strong>Google Ads traffic only</strong><span>{adsAccountSelected ? ga4AdsScope ? "Selected filters plus sessions attributed to the Ads account" : "Selected filters across the GA4 property" : "Choose a Google Ads account in Settings to enable this filter"}</span></div><button type="button" role="switch" aria-label="Google Ads traffic only" aria-checked={ga4AdsScope} disabled={!adsAccountSelected} onClick={toggleGa4AdsScope}><span /></button></div>;
   const appliedPeriod = section === "google-ads" && adsReport ? formatPeriod(adsReport.period) : section === "ga4" && ga4Report ? formatPeriod(ga4Report.period) : undefined;
   const metricItems = section === "google-ads" && adsReport ? [
     { title: "Ad spend", value: formatCurrency(adsReport.totals.spend, adsReport.currency), note: `${adsReport.campaigns.length} campaigns · ${adsReport.currency}`, lead: true },
@@ -388,11 +367,10 @@ export function DashboardPage({ section }: { section: Section }) {
     {menuOpen && <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
     <aside id="sidebar" className={`sidebar ${menuOpen ? "is-open" : ""}`}><Sidebar section={section} query={query} user={sessionUser} onLogout={() => void handleLogout()} logoutError={logoutError} onNavigate={() => setMenuOpen(false)} /></aside>
     <main id="main-content" className="main-area" inert={menuOpen || undefined}><div className="page-content">
-      <div className={`page-heading ${section === "settings" ? "settings-page-heading" : "report-page-heading"}`}><div><h1>{pageTitle}</h1>{section === "google-ads" ? <p>Campaign spend, clicks and conversions.</p> : section === "overview" ? <p>Your campaign spend and website traffic, together.</p> : section === "settings" ? <p>Choose reporting sources and manage access.</p> : null}</div><div className="page-heading-actions"><div className="reporting-scope" aria-label="Selected reporting sources"><div><span>Google Ads account</span><strong title={selectedSources.account}>{selectedSources.account}</strong></div><div><span>GA4 property</span><strong title={selectedSources.property}>{selectedSources.property}</strong></div></div>{section === "settings" ? null : <FilterBar mode="report" campaignSource={section === "ga4" ? "ga4" : "google-ads"} appliedPeriod={appliedPeriod} onSelectionChange={setSelectedSources} allowedSources={allowedSources} />}</div></div>
+      <div className={`page-heading ${section === "settings" ? "settings-page-heading" : "report-page-heading"}`}><div><h1>{pageTitle}</h1>{section === "google-ads" ? <p>Campaign spend, clicks and conversions.</p> : section === "overview" ? <p>Your campaign spend and website traffic, together.</p> : section === "settings" ? <p>Choose reporting sources and manage access.</p> : null}</div><div className="page-heading-actions"><div className="reporting-scope" aria-label="Selected reporting sources"><div><span>Google Ads account</span><strong title={selectedSources.account}>{selectedSources.account}</strong></div><div><span>GA4 property</span><strong title={selectedSources.property}>{selectedSources.property}</strong></div></div>{section === "settings" ? null : <FilterBar mode="report" campaignSource={section === "ga4" ? "ga4" : "google-ads"} showGa4AdsScope={section === "ga4" || section === "overview"} appliedPeriod={appliedPeriod} onSelectionChange={setSelectedSources} allowedSources={allowedSources} />}</div></div>
       {googleHealth?.health === "reauth_required" && <div className="google-health-notice" role="alert"><strong>Google connection needs attention</strong><span>{googleHealth.message || "Google authorization expired or was revoked. Contact your Super Admin to reconnect Google in Settings."}</span>{section !== "settings" && <Link href={`/settings${query}`}>Open Settings</Link>}</div>}
       {googleHealth?.health === "configuration_error" && <div className="google-health-notice is-error" role="alert"><strong>Google connection configuration issue</strong><span>{googleHealth.message || "The Super Admin needs to check the Google OAuth client settings."}</span></div>}
       {section === "settings" ? <SettingsWorkspace permissions={sessionUser.permissions} isSuperAdmin={sessionUser.isSuperAdmin} allowedSources={allowedSources} onSelectionChange={setSelectedSources} /> : null}
-      {section === "ga4" && allowedSources.googleAds && adsScopeControl}
       {section === "ga4" && ga4Report?.truncated && <p className="demo-notice" role="note">Some GA4 breakdowns exceeded 50,000 rows and were capped. Narrow the date range or add a filter to see the full breakdown.</p>}
       {section === "settings" ? null : section === "overview" ? <>
         <div className="overview-source-grid">
@@ -408,7 +386,7 @@ export function DashboardPage({ section }: { section: Section }) {
               <Link href={`/google-ads${query}`} className="source-link">Open Google Ads report <ArrowRight size={14} /></Link>
             </>}
           </OverviewSourceSection>}
-          {allowedSources.ga4 && <OverviewSourceSection title="Google Analytics 4" state={overviewGa4State} mode={ga4Report?.mode} period={ga4Report?.period} error={overviewGa4Error} emptyMessage="Open Settings to choose a GA4 account and property." action={allowedSources.googleAds ? adsScopeControl : undefined}>
+          {allowedSources.ga4 && <OverviewSourceSection title="Google Analytics 4" state={overviewGa4State} mode={ga4Report?.mode} period={ga4Report?.period} error={overviewGa4Error} emptyMessage="Open Settings to choose a GA4 account and property.">
             {ga4Report && <>
               <MetricCards items={[
                 { title: "Sessions", value: count(ga4Report.totals.sessions), note: "Google Analytics 4", lead: true },

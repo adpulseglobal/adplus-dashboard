@@ -19,9 +19,17 @@ interface ValidationResponse { warnings: string[]; previousPeriod: { startDate: 
 export interface SelectedSources { account: string; property: string }
 
 const FILTER_CHANGE_EVENT = "adpulse:filters-changed";
+const GA4_ADS_SCOPE_LABEL = "Google Ads traffic only";
 const defaultFilters = defaultDashboardFilters();
 
-export function FilterBar({ mode = "report", campaignSource = "google-ads", appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: { mode?: "report" | "settings"; campaignSource?: "google-ads" | "ga4"; appliedPeriod?: string; onSelectionChange?: (selection: SelectedSources) => void; allowedSources?: { googleAds: boolean; ga4: boolean } }) {
+export function FilterBar({ mode = "report", campaignSource = "google-ads", showGa4AdsScope = false, appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: {
+  mode?: "report" | "settings";
+  campaignSource?: "google-ads" | "ga4";
+  showGa4AdsScope?: boolean;
+  appliedPeriod?: string;
+  onSelectionChange?: (selection: SelectedSources) => void;
+  allowedSources?: { googleAds: boolean; ga4: boolean };
+}) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterDrawerMounted, setFilterDrawerMounted] = useState(false);
   const drawerCloseTimer = useRef<number | null>(null);
@@ -213,7 +221,6 @@ export function FilterBar({ mode = "report", campaignSource = "google-ads", appl
   const channelOptions = ga4Options?.channelGroups ?? [];
   const sourceMediumOptions = ga4Options?.sourceMediums ?? [];
   const landingPageOptions = ga4Options?.landingPages ?? [];
-  const selectedCount = filters.campaignIds.length + filters.campaignTypes.length + filters.devices.length + filters.channelGroups.length + filters.sourceMediums.length + filters.landingPages.length;
   const selectedGa4Account = ga4Accounts.find((item) => item.id === draft.ga4AccountId);
   const properties = selectedGa4Account?.properties ?? [];
 
@@ -241,6 +248,8 @@ export function FilterBar({ mode = "report", campaignSource = "google-ads", appl
   </section>;
 
   const campaignNames = new Map((adsOptions?.campaigns ?? []).map(({ id, name }) => [id, name]));
+  const showAdsScope = showGa4AdsScope && allowedSources.googleAds && allowedSources.ga4;
+  const setAdsScope = (enabled: boolean) => commit({ ...filters, ga4AdsScope: enabled });
   const chips: Array<{ key: string; label: string; remove: () => void }> = [
     { key: "date-range", label: `Date: ${filters.dateRange.startDate} – ${filters.dateRange.endDate}`, remove: () => commit({ ...filters, dateRange: defaultFilters.dateRange }) },
     ...filters.campaignIds.map((id) => ({ key: `campaign:${id}`, label: `Campaign: ${campaignNames.get(id) ?? id}`, remove: () => updateList("campaignIds", id, false) })),
@@ -250,7 +259,11 @@ export function FilterBar({ mode = "report", campaignSource = "google-ads", appl
     ...filters.sourceMediums.map((value) => ({ key: `source:${value}`, label: `Source: ${value}`, remove: () => updateList("sourceMediums", value, false) })),
     ...filters.landingPages.map((value) => ({ key: `landing:${value}`, label: `Landing: ${value}`, remove: () => updateList("landingPages", value, false) })),
   ];
-  const clearAll = () => commit({ ...filters, dateRange: defaultFilters.dateRange, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [] });
+  if (showAdsScope && filters.ga4AdsScope) {
+    chips.push({ key: "ga4-ads-scope", label: GA4_ADS_SCOPE_LABEL, remove: () => setAdsScope(false) });
+  }
+  const selectedCount = chips.length - 1;
+  const clearAll = () => commit({ ...filters, dateRange: defaultFilters.dateRange, ga4AdsScope: false, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [] });
   const dateFields = <div className="filter-date-range">
     <label className="filter-field"><span>From</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={filters.dateRange.startDate} onChange={(event) => commit({ ...filters, dateRange: { ...filters.dateRange, startDate: event.target.value } })} /></label>
     <span className="filter-date-separator" aria-hidden="true">to</span>
@@ -281,6 +294,17 @@ export function FilterBar({ mode = "report", campaignSource = "google-ads", appl
           <section className="filter-drawer-section"><h3>Date range</h3>{dateFields}</section>
           {(allowedSources.googleAds || allowedSources.ga4) && <section className="filter-drawer-section"><h3>Reporting sources</h3>{sourceSelectionFields}</section>}
           <section className="filter-drawer-section"><h3>Campaigns and dimensions</h3>
+            {showAdsScope && <div className="ga4-ads-scope">
+              <div>
+                <strong id="ga4-ads-scope-label">{GA4_ADS_SCOPE_LABEL}</strong>
+                <span id="ga4-ads-scope-help">{filters.googleAdsAccountId
+                  ? "Limit GA4 to sessions attributed to the selected Google Ads account."
+                  : "Choose a Google Ads account above to enable this filter."}</span>
+              </div>
+              <button type="button" role="switch" aria-labelledby="ga4-ads-scope-label" aria-describedby="ga4-ads-scope-help"
+                aria-checked={filters.ga4AdsScope} disabled={!filters.googleAdsAccountId}
+                onClick={() => setAdsScope(!filters.ga4AdsScope)}><span /></button>
+            </div>}
             {(allowedSources.googleAds && !filters.googleAdsAccountId || allowedSources.ga4 && !filters.ga4PropertyId) && <p className="filter-guidance">{allowedSources.googleAds && !filters.googleAdsAccountId ? "Choose a Google Ads account to filter campaigns and types. " : ""}{allowedSources.ga4 && !filters.ga4PropertyId ? "Choose a GA4 property to filter channels, sources, and landing pages." : ""}</p>}
             {campaignAndDimensionFilters}
             {ga4Options?.truncated && <p className="filter-hint">GA4 options show the top 1,000 values from the last 90 days.</p>}
