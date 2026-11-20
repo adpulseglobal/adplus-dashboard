@@ -157,13 +157,14 @@ h1 { font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -.6px;
 /* At 1440px: 1440 - 224 sidebar - 64 gutters = 1152 canvas.
    4 KPI columns divide the full 1152; chart + sources = 692 + 20 + 440. */
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 20px 0; }
-.metric-card { min-width: 0; padding: 20px 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.metric-card { min-width: 0; padding: 20px 22px; background: #ad1735; color: #fff; border: 1px solid transparent; border-radius: 12px; }
+.metric-card.metric-lead { background: #94132e; }
 .metric-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.metric-title { font-size: 13px; font-weight: 400; color: var(--muted); line-height: 1.4; }
-.metric-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; color: var(--brand); background: #f9e9ec; }
+.metric-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.metric-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border: 1px solid #ffffff55; border-radius: 9px; }
 .metric-value { font-size: 26px; line-height: 1.25; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.6px; margin-top: 8px; }
 .metric-lead .metric-value { font-size: 34px; line-height: .96; font-weight: 600; }
-.metric-note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.metric-note { font-size: 13px; margin-top: 10px; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(330px, 1fr); gap: var(--gap); margin-bottom: var(--gap); }
 .content-grid.single-column { grid-template-columns: minmax(0, 1fr); }
 .report-content-grid .report-breakdown { min-height: 0; }
