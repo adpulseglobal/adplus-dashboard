@@ -2,7 +2,7 @@ import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { Ga4Account, Ga4Property } from "../connections/connection.types";
 import { GoogleAuthService } from "./google-auth.service";
 import { assertGoogleResponse, isMockMode, throwMockScenarioIfRequired } from "./provider-errors";
-import { buildGa4ReportRequest, buildMockGa4Report } from "../reports/ga4-report";
+import { buildGa4ReportRequest, buildMockGa4Report, mockGa4CampaignIdsWithSessions } from "../reports/ga4-report";
 import type { DashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
 
 interface PropertySummary { property?: string; displayName?: string }
@@ -144,6 +144,48 @@ export class Ga4Provider {
       pageToken = page.nextPageToken;
     } while (pageToken);
     return false;
+  }
+
+  async listCampaignIdsWithSessions(propertyId: string, customerId: string, dateRange: DashboardFilters["dateRange"]): Promise<Set<string>> {
+    if (isMockMode()) {
+      throwMockScenarioIfRequired();
+      return MOCK_GA4_PROPERTIES_BY_ADS_ACCOUNT[customerId]?.includes(propertyId)
+        ? mockGa4CampaignIdsWithSessions(customerId)
+        : new Set();
+    }
+
+    const token = await this.googleAuth.getAccessToken();
+    const url = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
+    const dimensionName = "sessionGoogleAdsCampaignId";
+    const campaignIds = new Set<string>();
+    let offset = 0;
+    while (true) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          dateRanges: [dateRange],
+          dimensions: [{ name: dimensionName }],
+          metrics: [{ name: "sessions" }],
+          dimensionFilter: {
+            filter: { fieldName: "sessionGoogleAdsCustomerId", stringFilter: { matchType: "EXACT", value: customerId } },
+          },
+          orderBys: [{ dimension: { dimensionName } }],
+          limit: "10000",
+          offset: String(offset),
+        }),
+        signal: AbortSignal.timeout(25_000),
+      }).catch(() => { throw new ServiceUnavailableException("GA4 campaign options are unavailable."); });
+      await assertGoogleResponse(response, "Google Analytics Data API");
+      const report = await response.json() as RunReportResult;
+      const rows = report.rows ?? [];
+      for (const row of rows) {
+        const id = row.dimensionValues?.[0]?.value;
+        if (id && /^\d{1,32}$/.test(id) && metric(row, 0) > 0) campaignIds.add(id);
+      }
+      offset += rows.length;
+      if (!rows.length || offset >= (report.rowCount ?? offset)) return campaignIds;
+    }
   }
 
   async listFilterOptions(propertyId: string): Promise<Ga4FilterOptions> {

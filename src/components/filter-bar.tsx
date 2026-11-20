@@ -21,7 +21,7 @@ export interface SelectedSources { account: string; property: string }
 const FILTER_CHANGE_EVENT = "adpulse:filters-changed";
 const defaultFilters = defaultDashboardFilters();
 
-export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: { mode?: "report" | "settings"; appliedPeriod?: string; onSelectionChange?: (selection: SelectedSources) => void; allowedSources?: { googleAds: boolean; ga4: boolean } }) {
+export function FilterBar({ mode = "report", campaignSource = "google-ads", appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: { mode?: "report" | "settings"; campaignSource?: "google-ads" | "ga4"; appliedPeriod?: string; onSelectionChange?: (selection: SelectedSources) => void; allowedSources?: { googleAds: boolean; ga4: boolean } }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterDrawerMounted, setFilterDrawerMounted] = useState(false);
   const drawerCloseTimer = useRef<number | null>(null);
@@ -32,7 +32,7 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
   const [ga4Accounts, setGa4Accounts] = useState<Ga4AccountOption[]>([]);
   const [ga4AccountsLoaded, setGa4AccountsLoaded] = useState(false);
   const [ga4AccountsError, setGa4AccountsError] = useState("");
-  const [adsOptions, setAdsOptions] = useState<AdsFilterOptions | null>(null);
+  const [campaignResponse, setCampaignResponse] = useState<{ url: string; options: AdsFilterOptions | null } | null>(null);
   const [ga4Options, setGa4Options] = useState<Ga4FilterOptions | null>(null);
   const [optionError, setOptionError] = useState("");
   const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
@@ -111,19 +111,39 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     return () => controller.abort();
   }, [allowedSources.ga4]);
 
+  const campaignPropertyId = campaignSource === "ga4" ? filters.ga4PropertyId : "";
+  const campaignQuery = new URLSearchParams({
+    accountId: filters.googleAdsAccountId,
+    startDate: filters.dateRange.startDate,
+    endDate: filters.dateRange.endDate,
+  });
+  if (campaignPropertyId) campaignQuery.set("propertyId", campaignPropertyId);
+  const canLoadCampaigns = mode === "report" && allowedSources.googleAds && filters.googleAdsAccountId
+    && (campaignSource === "google-ads" || (allowedSources.ga4 && campaignPropertyId));
+  const campaignOptionsUrl = canLoadCampaigns
+    ? apiUrl(`/connections/${campaignSource === "ga4" ? "ga4/campaign-options" : "google-ads/filter-options"}?${campaignQuery}`)
+    : "";
+  const currentCampaignResponse = campaignResponse?.url === campaignOptionsUrl ? campaignResponse : null;
+  const adsOptions = currentCampaignResponse?.options;
+  const campaignEmptyLabel = !filters.googleAdsAccountId ? "Choose an Ads account first"
+    : !canLoadCampaigns ? "Choose a GA4 property first"
+    : !currentCampaignResponse ? "Loading campaigns…"
+    : !adsOptions ? "Could not load campaigns"
+    : campaignSource === "ga4" ? "No campaigns with GA4 sessions"
+    : "No campaigns found";
+
   useEffect(() => {
-    if (mode !== "report" || !allowedSources.googleAds) { setAdsOptions(null); setOptionError(""); return; }
-    if (!filters.googleAdsAccountId) { setAdsOptions(null); setOptionError(""); return; }
+    if (!campaignOptionsUrl) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({
-      accountId: filters.googleAdsAccountId,
-      startDate: filters.dateRange.startDate,
-      endDate: filters.dateRange.endDate,
-    });
-    fetchJson<AdsFilterOptions>(apiUrl(`/connections/google-ads/filter-options?${query.toString()}`), controller.signal)
-      .then((options) => { setAdsOptions(options); setOptionError(""); }).catch((error: Error) => { if (error.name !== "AbortError") setOptionError("Google Ads campaign options could not be loaded."); });
+    fetchJson<AdsFilterOptions>(campaignOptionsUrl, controller.signal)
+      .then((options) => {
+        if (!controller.signal.aborted) setCampaignResponse({ url: campaignOptionsUrl, options });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCampaignResponse({ url: campaignOptionsUrl, options: null });
+      });
     return () => controller.abort();
-  }, [filters.googleAdsAccountId, filters.dateRange.startDate, filters.dateRange.endDate, mode, allowedSources.googleAds]);
+  }, [campaignOptionsUrl]);
 
   useEffect(() => {
     if (mode !== "report" || !allowedSources.ga4) { setGa4Options(null); return; }
@@ -237,7 +257,7 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     <label className="filter-field"><span>To</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={filters.dateRange.endDate} onChange={(event) => commit({ ...filters, dateRange: { ...filters.dateRange, endDate: event.target.value } })} /></label>
   </div>;
   const campaignAndDimensionFilters = <div className="advanced-filter-grid">
-    {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={filters.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!filters.googleAdsAccountId} emptyLabel={filters.googleAdsAccountId ? "No campaigns found" : "Choose an Ads account first"} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
+    {allowedSources.googleAds && <><MultiSelect title="Campaigns" values={filters.campaignIds} options={(adsOptions?.campaigns ?? []).map((item) => ({ value: item.id, label: `${item.name} · ${item.id}` }))} disabled={!adsOptions} emptyLabel={campaignEmptyLabel} onChange={(id, selected) => updateList("campaignIds", id, selected)} />
     <MultiSelect title="Campaign types" values={filters.campaignTypes} options={campaignTypeOptions.map((item) => ({ value: item, label: formatEnum(item) }))} disabled={!filters.googleAdsAccountId} emptyLabel={filters.googleAdsAccountId ? "No campaign types found" : "Choose an Ads account first"} onChange={(type, selected) => updateList("campaignTypes", type as CampaignType, selected)} /></>}
     <MultiSelect title="Devices" values={filters.devices} options={DEVICE_CATEGORIES.map((item) => ({ value: item, label: titleCase(item) }))} onChange={(device, selected) => updateList("devices", device as DeviceCategory, selected)} />
     {allowedSources.ga4 && <><MultiSelect title="GA4 channel group" values={filters.channelGroups} options={channelOptions.map((item) => ({ value: item, label: item }))} disabled={!filters.ga4PropertyId} emptyLabel={filters.ga4PropertyId ? "No channel groups found" : "Choose a GA4 property first"} onChange={(value, selected) => updateList("channelGroups", value, selected)} />

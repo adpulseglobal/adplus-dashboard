@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import type { Request } from "express";
 import { ConnectionsService } from "./connections.service";
 import { authenticatedRequest, CsrfGuard, PermissionsGuard, RequirePermissions, SessionGuard } from "../auth/auth.guard";
-import { validateDashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
+import { defaultDashboardFilters, validateDashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
 
 interface SelectConnectionBody { id?: unknown }
 
@@ -67,6 +67,21 @@ export class ConnectionsController {
   listGa4FilterOptions(@Query("propertyId") propertyId?: string) {
     if (!propertyId || !/^\d{1,32}$/.test(propertyId)) throw new BadRequestException("A valid GA4 property ID is required.");
     return this.connectionsService.listGa4FilterOptions(propertyId);
+  }
+
+  @Get("ga4/campaign-options")
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions("google_ads.view", "ga4.view")
+  listGa4CampaignOptions(
+    @Query("accountId") accountId?: string, @Query("propertyId") propertyId?: string,
+    @Query("startDate") startDate?: string, @Query("endDate") endDate?: string,
+  ) {
+    if (!accountId || !propertyId) throw new BadRequestException("Choose a Google Ads account and a GA4 property.");
+    const parsed = validateDashboardFilters({
+      ...defaultDashboardFilters(), googleAdsAccountId: accountId, ga4PropertyId: propertyId, dateRange: { startDate, endDate },
+    });
+    if (!parsed.success) throw new BadRequestException({ message: "Invalid GA4 campaign options request.", issues: parsed.issues });
+    return this.connectionsService.listGa4CampaignOptions(parsed.data);
   }
 
   @Post(":source/select")

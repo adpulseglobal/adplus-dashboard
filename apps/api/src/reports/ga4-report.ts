@@ -43,8 +43,7 @@ export function buildGa4ReportRequest(dimension: string, filters: DashboardFilte
   };
 }
 
-export function buildMockGa4Report(filters: DashboardFilters, propertyId: string): Ga4ReportData {
-  const fixture = [
+const MOCK_ACQUISITION_ROWS = [
     { channel: "Organic Search", source: "google / organic", sessions: 6842, campaignId: "", campaignType: "", adsCustomerId: "" },
     { channel: "Paid Search", source: "google / cpc", sessions: 2890, campaignId: "501", campaignType: "Search", adsCustomerId: "1234567890" },
     { channel: "Paid Search", source: "google / cpc", sessions: 1400, campaignId: "502", campaignType: "Search", adsCustomerId: "1234567890" },
@@ -52,10 +51,18 @@ export function buildMockGa4Report(filters: DashboardFilters, propertyId: string
     { channel: "Referral", source: "newsletter / email", sessions: 1684, campaignId: "", campaignType: "", adsCustomerId: "" },
     { channel: "Paid Social", source: "facebook / cpc", sessions: 1210, campaignId: "503", campaignType: "Performance Max", adsCustomerId: "9876543210" },
     { channel: "Display", source: "google / cpc", sessions: 250, campaignId: "504", campaignType: "Display", adsCustomerId: "9876543210" },
-  ];
+];
+
+export function mockGa4CampaignIdsWithSessions(customerId: string): Set<string> {
+  return new Set(MOCK_ACQUISITION_ROWS
+    .filter((row) => row.adsCustomerId === customerId && row.campaignId && row.sessions > 0)
+    .map((row) => row.campaignId));
+}
+
+export function buildMockGa4Report(filters: DashboardFilters, propertyId: string): Ga4ReportData {
   const pages = ["/", "/collections/spring", "/products/everyday-tote", "/blog/spring-guide", "/guides/material-care"];
   const devices = ["mobile", "desktop", "tablet"];
-  const rows = fixture.flatMap((item) => pages.flatMap((landingPage, pageIndex) => devices.map((device, deviceIndex) => {
+  const rows = MOCK_ACQUISITION_ROWS.flatMap((item) => pages.flatMap((landingPage, pageIndex) => devices.map((device, deviceIndex) => {
     const bucket = pageIndex * devices.length + deviceIndex;
     const bucketCount = pages.length * devices.length;
     return { ...item, landingPage, device, sessions: Math.floor(item.sessions / bucketCount) + (bucket < item.sessions % bucketCount ? 1 : 0) };

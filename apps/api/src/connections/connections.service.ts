@@ -43,6 +43,15 @@ export class ConnectionsService {
     return this.ga4Provider.listFilterOptions(propertyId);
   }
 
+  async listGa4CampaignOptions(filters: DashboardFilters): Promise<CampaignFilterOptions> {
+    const { googleAdsAccountId, ga4PropertyId, dateRange } = filters;
+    await this.validateSelection("ga4", ga4PropertyId);
+    const adsOptions = await this.listGoogleAdsFilterOptions(googleAdsAccountId, dateRange);
+    if (!adsOptions.campaigns.length) return adsOptions;
+    const campaignIds = await this.ga4Provider.listCampaignIdsWithSessions(ga4PropertyId, googleAdsAccountId, dateRange);
+    return { ...adsOptions, campaigns: adsOptions.campaigns.filter(({ id }) => campaignIds.has(id)) };
+  }
+
   async validateSelection(source: "google_ads" | "ga4", resourceId: string): Promise<{ source: string; selectedId: string; authorized: true; mode: "live" | "mock" }> {
     const resources: ConnectionOption[] = source === "google_ads" ? await this.listGoogleAdsAccounts() : await this.listGa4Properties();
     const selected = resources.find((resource) => resource.id === resourceId);
