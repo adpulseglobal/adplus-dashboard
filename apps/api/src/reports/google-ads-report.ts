@@ -158,7 +158,8 @@ export function buildMockCampaignRows(filters: DashboardFilters, currency = "USD
     { id: "503", name: "Prospecting | Performance Max", status: "ENABLED", type: "PERFORMANCE_MAX", spend: 3760.45, clicks: 1927, ctr: 2.31, conversions: 129 },
     { id: "504", name: "Remarketing | Display", status: "PAUSED", type: "DISPLAY", spend: 1145, clicks: 1604, ctr: 1.76, conversions: 42 },
   ].filter((campaign) => (!filters.campaignIds.length || filters.campaignIds.includes(campaign.id))
-    && (!filters.campaignTypes.length || filters.campaignTypes.includes(campaign.type as typeof filters.campaignTypes[number])));
+    && (!filters.campaignTypes.length || filters.campaignTypes.includes(campaign.type as typeof filters.campaignTypes[number]))
+    && mockCampaignIsActive(campaign.id, filters.dateRange.startDate, filters.dateRange.endDate));
   const days = listDays(filters.dateRange.startDate, filters.dateRange.endDate);
   const deviceWeights = ["MOBILE", "DESKTOP", "TABLET"].map((device) => ({ device, weight: filters.devices.length && !filters.devices.includes(device.toLowerCase() as typeof filters.devices[number]) ? 0 : device === "MOBILE" ? 50 : device === "DESKTOP" ? 35 : 15 }));
   const weights = days.flatMap((date, index) => {
@@ -181,6 +182,16 @@ export function buildMockCampaignRows(filters: DashboardFilters, currency = "USD
       }];
     });
   });
+}
+
+function mockCampaignIsActive(id: string, startDate: string, endDate: string): boolean {
+  const firstActiveDate: Record<string, string> = {
+    "501": "2026-01-01", "502": "2026-01-01", "503": "2026-01-01", "504": "2026-01-01",
+  };
+  const lastActiveDate: Record<string, string> = {
+    "501": "2026-12-31", "502": "2026-06-30", "503": "2026-12-31", "504": "2026-03-31",
+  };
+  return startDate <= lastActiveDate[id] && endDate >= firstActiveDate[id];
 }
 
 function listDays(start: string, end: string): string[] {
