@@ -33,7 +33,7 @@ export class Ga4ReportsService {
     }
     if (filters.googleAdsAccountId && (filters.campaignIds.length || filters.campaignTypes.length)) {
       await this.connections.validateSelection("google_ads", filters.googleAdsAccountId);
-      const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId);
+      const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId, filters.dateRange);
       const invalidCampaignIds = filters.campaignIds.filter((id) => !options.campaigns.some((campaign) => campaign.id === id));
       const invalidCampaignTypes = filters.campaignTypes.filter((type) => !options.campaignTypes.includes(type));
       if (invalidCampaignIds.length || invalidCampaignTypes.length) throw new BadRequestException({ message: "Selected Google Ads filters are not available for this account.", invalidCampaignIds, invalidCampaignTypes });

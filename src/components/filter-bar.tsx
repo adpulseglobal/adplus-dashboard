@@ -80,10 +80,15 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     if (mode !== "report" || !allowedSources.googleAds) { setAdsOptions(null); setOptionError(""); return; }
     if (!filters.googleAdsAccountId) { setAdsOptions(null); setOptionError(""); return; }
     const controller = new AbortController();
-    fetchJson<AdsFilterOptions>(apiUrl(`/connections/google-ads/filter-options?accountId=${encodeURIComponent(filters.googleAdsAccountId)}`), controller.signal)
+    const query = new URLSearchParams({
+      accountId: filters.googleAdsAccountId,
+      startDate: filters.dateRange.startDate,
+      endDate: filters.dateRange.endDate,
+    });
+    fetchJson<AdsFilterOptions>(apiUrl(`/connections/google-ads/filter-options?${query.toString()}`), controller.signal)
       .then((options) => { setAdsOptions(options); setOptionError(""); }).catch((error: Error) => { if (error.name !== "AbortError") setOptionError("Google Ads campaign options could not be loaded."); });
     return () => controller.abort();
-  }, [filters.googleAdsAccountId, mode, allowedSources.googleAds]);
+  }, [filters.googleAdsAccountId, filters.dateRange.startDate, filters.dateRange.endDate, mode, allowedSources.googleAds]);
 
   useEffect(() => {
     if (mode !== "report" || !allowedSources.ga4) { setGa4Options(null); return; }

@@ -15,7 +15,7 @@ Endpoints:
 - `GET /connections/google-ads`
 - `GET /connections/google-ads/ga4-properties?accountId=1234567890` (lists only GA4 properties linked to the selected Ads customer)
 - `GET /connections/ga4`
-- `GET /connections/google-ads/filter-options?accountId=1234567890`
+- `GET /connections/google-ads/filter-options?accountId=1234567890&startDate=2026-10-01&endDate=2026-10-31` (lists campaigns with report rows in the selected date range)
 - `GET /connections/ga4/filter-options?propertyId=100000001`
 - `POST /connections/google-ads/select` with `{ "id": "1234567890" }`
 - `POST /connections/ga4/select` with `{ "id": "100000001" }`

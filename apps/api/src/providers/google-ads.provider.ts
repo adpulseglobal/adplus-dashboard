@@ -6,7 +6,6 @@ import { buildCampaignReportQuery, buildMockCampaignRows, normalizeCampaignRepor
 import type { DashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
 
 interface AccessibleCustomersResponse { resourceNames?: string[] }
-interface GoogleAdsCampaign { id?: string; name?: string; advertisingChannelType?: string }
 interface GoogleAdsSearchResponse { results?: GoogleAdsReportRow[]; nextPageToken?: string }
 interface GoogleAdsCustomerClient { clientCustomer?: string; descriptiveName?: string; manager?: boolean; level?: number; status?: string }
 interface GoogleAdsCustomerClientResponse { results?: Array<{ customerClient?: GoogleAdsCustomerClient }> }
@@ -78,17 +77,27 @@ export class GoogleAdsProvider {
     }
   }
 
-  async listCampaignFilterOptions(customerId: string): Promise<CampaignFilterOptions> {
+  async listCampaignFilterOptions(customerId: string, dateRange: DashboardFilters["dateRange"]): Promise<CampaignFilterOptions> {
     if (isMockMode()) {
       throwMockScenarioIfRequired();
-      return { campaigns: MOCK_CAMPAIGNS, campaignTypes: [...new Set(MOCK_CAMPAIGNS.map((campaign) => campaign.type))].sort(), mode: "mock" };
+      const campaignIds = new Set(buildMockCampaignRows({
+        dateRange, googleAdsAccountId: customerId, comparison: "none", ga4AccountId: "", ga4PropertyId: "", ga4AdsScope: false,
+        campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [],
+      } as DashboardFilters).map((row) => row.campaign?.id).filter((id): id is string => Boolean(id)));
+      const campaigns = MOCK_CAMPAIGNS.filter((campaign) => campaignIds.has(campaign.id));
+      return { campaigns, campaignTypes: [...new Set(campaigns.map((campaign) => campaign.type))].sort(), mode: "mock" };
     }
     const apiVersion = process.env.GOOGLE_ADS_API_VERSION ?? "v26";
-    const campaigns = await this.getAllCampaigns(customerId, apiVersion);
-    const options = campaigns.flatMap((campaign) => {
-      if (typeof campaign.id !== "string" || !campaign.id || typeof campaign.name !== "string" || typeof campaign.advertisingChannelType !== "string") return [];
-      return [{ id: campaign.id, name: campaign.name, type: campaign.advertisingChannelType }];
-    });
+    const filters = {
+      dateRange, comparison: "none", googleAdsAccountId: customerId, ga4AccountId: "", ga4PropertyId: "", ga4AdsScope: false,
+      campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [],
+    } as DashboardFilters;
+    const rows = await this.getCampaignReportRows(customerId, apiVersion, buildCampaignReportQuery(filters));
+    const options = [...new Map(rows.flatMap((row) => {
+      const campaign = row.campaign;
+      if (typeof campaign?.id !== "string" || !campaign.id || typeof campaign.name !== "string" || typeof campaign.advertisingChannelType !== "string") return [];
+      return [[campaign.id, { id: campaign.id, name: campaign.name, type: campaign.advertisingChannelType }] as const];
+    })).values()];
     return { campaigns: options, campaignTypes: [...new Set(options.map((campaign) => campaign.type))].sort(), mode: "live" };
   }
 
@@ -101,20 +110,6 @@ export class GoogleAdsProvider {
     const query = buildCampaignReportQuery(filters);
     const rows = await this.getCampaignReportRows(customerId, apiVersion, query);
     return normalizeCampaignReport(rows, customerId, "live", filters.dateRange);
-  }
-
-  private async getAllCampaigns(customerId: string, apiVersion: string): Promise<GoogleAdsCampaign[]> {
-    const query = "SELECT campaign.id, campaign.name, campaign.advertising_channel_type FROM campaign WHERE campaign.status != 'REMOVED' ORDER BY campaign.name";
-    const campaigns: GoogleAdsCampaign[] = [];
-    let pageToken: string | undefined;
-    do {
-      const response = await this.searchCampaignPage(customerId, apiVersion, query, pageToken);
-      await assertGoogleResponse(response, "Google Ads API");
-      const page = await response.json() as GoogleAdsSearchResponse;
-      campaigns.push(...(page.results ?? []).flatMap((row) => row.campaign ? [row.campaign] : []));
-      pageToken = page.nextPageToken;
-    } while (pageToken);
-    return campaigns;
   }
 
   private async getCampaignReportRows(customerId: string, apiVersion: string, query: string): Promise<GoogleAdsReportRow[]> {

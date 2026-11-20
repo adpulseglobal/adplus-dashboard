@@ -32,7 +32,7 @@ export class FilterPlanningService {
     }
     await this.connections.validateSelection("google_ads", filters.googleAdsAccountId);
     if (!hasCampaignFilters) return;
-    const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId);
+    const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId, filters.dateRange);
     const campaignIds = new Set(options.campaigns.map((campaign) => campaign.id));
     const campaignTypes = new Set(options.campaignTypes);
     const invalidIds = filters.campaignIds.filter((id) => !campaignIds.has(id));

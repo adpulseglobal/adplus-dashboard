@@ -3,6 +3,7 @@ import { ConnectionOption, Ga4Account, Ga4Property, GoogleAdsAccount } from "./c
 import { CampaignFilterOptions, GoogleAdsProvider } from "../providers/google-ads.provider";
 import { Ga4FilterOptions, Ga4Provider } from "../providers/ga4.provider";
 import { GoogleTokenVault } from "../providers/google-token-vault.service";
+import type { DashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
 
 @Injectable()
 export class ConnectionsService {
@@ -32,9 +33,9 @@ export class ConnectionsService {
     return properties.some((property) => property.id === propertyId);
   }
 
-  async listGoogleAdsFilterOptions(accountId: string): Promise<CampaignFilterOptions> {
+  async listGoogleAdsFilterOptions(accountId: string, dateRange: DashboardFilters["dateRange"]): Promise<CampaignFilterOptions> {
     await this.validateSelection("google_ads", accountId);
-    return this.adsProvider.listCampaignFilterOptions(accountId);
+    return this.adsProvider.listCampaignFilterOptions(accountId, dateRange);
   }
 
   async listGa4FilterOptions(propertyId: string): Promise<Ga4FilterOptions> {

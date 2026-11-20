@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import type { Request } from "express";
 import { ConnectionsService } from "./connections.service";
 import { authenticatedRequest, CsrfGuard, PermissionsGuard, RequirePermissions, SessionGuard } from "../auth/auth.guard";
+import { validateDashboardFilters } from "../../../../packages/contracts/src/dashboard-filters";
 
 interface SelectConnectionBody { id?: unknown }
 
@@ -50,9 +51,14 @@ export class ConnectionsController {
   @Get("google-ads/filter-options")
   @UseGuards(PermissionsGuard)
   @RequirePermissions("google_ads.view")
-  listAdsFilterOptions(@Query("accountId") accountId?: string) {
+  listAdsFilterOptions(@Query("accountId") accountId?: string, @Query("startDate") startDate?: string, @Query("endDate") endDate?: string) {
     if (!accountId || !/^\d{1,32}$/.test(accountId)) throw new BadRequestException("A valid Google Ads account ID is required.");
-    return this.connectionsService.listGoogleAdsFilterOptions(accountId);
+    const parsed = validateDashboardFilters({
+      dateRange: { startDate, endDate }, comparison: "none", googleAdsAccountId: accountId,
+      ga4AccountId: "", ga4PropertyId: "", ga4AdsScope: false, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [],
+    });
+    if (!parsed.success) throw new BadRequestException({ message: "A valid campaign options date range is required.", issues: parsed.issues });
+    return this.connectionsService.listGoogleAdsFilterOptions(accountId, parsed.data.dateRange);
   }
 
   @Get("ga4/filter-options")

@@ -21,7 +21,7 @@ export class GoogleAdsReportsService {
 
   private async validateCampaignSelections(filters: DashboardFilters): Promise<void> {
     if (!filters.campaignIds.length && !filters.campaignTypes.length) return;
-    const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId);
+    const options = await this.connections.listGoogleAdsFilterOptions(filters.googleAdsAccountId, filters.dateRange);
     const campaignIds = new Set(options.campaigns.map(({ id }) => id));
     const campaignTypes = new Set(options.campaignTypes);
     const invalidCampaignIds = filters.campaignIds.filter((id) => !campaignIds.has(id));
