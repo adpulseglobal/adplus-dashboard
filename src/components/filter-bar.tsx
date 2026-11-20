@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronDown, CircleAlert, SlidersHorizontal, X } from "lucide-react";
 import { apiFetch, apiUrl } from "@/lib/api-client";
 import {
@@ -23,6 +23,8 @@ const defaultFilters = defaultDashboardFilters();
 
 export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, allowedSources = { googleAds: true, ga4: true } }: { mode?: "report" | "settings"; appliedPeriod?: string; onSelectionChange?: (selection: SelectedSources) => void; allowedSources?: { googleAds: boolean; ga4: boolean } }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterDrawerMounted, setFilterDrawerMounted] = useState(false);
+  const drawerCloseTimer = useRef<number | null>(null);
   const [filters, setFilters] = useState<DashboardFilters>(defaultFilters);
   const [draft, setDraft] = useState<DashboardFilters>(defaultFilters);
   const [issues, setIssues] = useState<FilterValidationIssue[]>([]);
@@ -52,12 +54,26 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
 
+  const openFilterDrawer = () => {
+    if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+    setFilterDrawerMounted(true);
+    window.requestAnimationFrame(() => setFiltersOpen(true));
+  };
+  const closeFilterDrawer = useCallback(() => {
+    setFiltersOpen(false);
+    if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+    drawerCloseTimer.current = window.setTimeout(() => {
+      setFilterDrawerMounted(false);
+      drawerCloseTimer.current = null;
+    }, 240);
+  }, []);
+
   useEffect(() => {
     if (!filtersOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFiltersOpen(false);
+      if (event.key === "Escape") closeFilterDrawer();
     };
     window.addEventListener("keydown", onKeyDown);
     window.setTimeout(() => document.querySelector<HTMLButtonElement>(".filter-drawer-close")?.focus(), 0);
@@ -65,7 +81,11 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [filtersOpen]);
+  }, [filtersOpen, closeFilterDrawer]);
+
+  useEffect(() => () => {
+    if (drawerCloseTimer.current !== null) window.clearTimeout(drawerCloseTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!allowedSources.googleAds) { setAccounts([]); return; }
@@ -230,12 +250,12 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
         {chips.length === 0 ? <span className="no-selected-filters">No filters selected</span> : chips.map((chip) => <span className="selected-filter-chip" key={chip.key}>{chip.label}<button type="button" aria-label={`Remove ${chip.label}`} onClick={chip.remove}><X size={13} /></button></span>)}
         {chips.length > 0 && <button type="button" className="clear-all-filters" onClick={clearAll}>Clear all</button>}
       </div>
-      <button type="button" className="open-filter-drawer" aria-expanded={filtersOpen} aria-controls="report-filter-drawer" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={15} />More filters{selectedCount > 0 && <span>{selectedCount}</span>}</button>
+      <button type="button" className="open-filter-drawer" aria-expanded={filtersOpen} aria-controls="report-filter-drawer" onClick={openFilterDrawer}><SlidersHorizontal size={15} />More filters{selectedCount > 0 && <span>{selectedCount}</span>}</button>
     </div>
-    {filtersOpen && <div className="filter-drawer-layer">
-      <button className="filter-drawer-backdrop" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
+    {filterDrawerMounted && <div className={`filter-drawer-layer ${filtersOpen ? "is-open" : "is-closing"}`}>
+      <button className="filter-drawer-backdrop" aria-label="Close filters" onClick={closeFilterDrawer} />
       <aside id="report-filter-drawer" className="filter-drawer" role="dialog" aria-modal="true" aria-labelledby="filter-drawer-title">
-        <header className="filter-drawer-header"><div><h2 id="filter-drawer-title">Filters</h2><p>Changes apply as you make them.</p></div><button type="button" className="filter-drawer-close" aria-label="Close filters" onClick={() => setFiltersOpen(false)}><X size={18} /></button></header>
+        <header className="filter-drawer-header"><div><h2 id="filter-drawer-title">Filters</h2><p>Changes apply as you make them.</p></div><button type="button" className="filter-drawer-close" aria-label="Close filters" onClick={closeFilterDrawer}><X size={18} /></button></header>
         <div className="filter-drawer-content">
           <section className="filter-drawer-section"><h3>Date range</h3>{dateFields}</section>
           {(allowedSources.googleAds || allowedSources.ga4) && <section className="filter-drawer-section"><h3>Reporting sources</h3>{sourceSelectionFields}</section>}
@@ -248,7 +268,7 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
           {warnings.map((warning) => <div className="filter-message warning" role="status" key={warning}>{warning}</div>)}
           {(optionError || ga4AccountsError) && <div className="filter-errors" aria-label="Connection errors">{optionError && <InlineError>{optionError}</InlineError>}{ga4AccountsError && <InlineError>{ga4AccountsError}</InlineError>}</div>}
         </div>
-        <footer className="filter-drawer-footer"><button type="button" className="filter-clear-button" disabled={chips.length === 0} onClick={clearAll}>Clear all filters</button><button type="button" className="filter-done-button" onClick={() => setFiltersOpen(false)}>Done</button></footer>
+        <footer className="filter-drawer-footer"><button type="button" className="filter-clear-button" disabled={chips.length === 0} onClick={clearAll}>Clear all filters</button><button type="button" className="filter-done-button" onClick={closeFilterDrawer}>Done</button></footer>
       </aside>
     </div>}
   </div>;

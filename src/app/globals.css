@@ -75,8 +75,12 @@ input { caret-color: var(--brand); accent-color: var(--brand); }
 .filter-date-range .filter-field { flex: 1; width: 0; }
 .filter-date-separator { padding-bottom: 8px; color: var(--muted); font-size: 12px; }
 .filter-drawer-layer { position: fixed; inset: 0; z-index: 90; }
-.filter-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; background: #20242766; }
-.filter-drawer { position: absolute; top: 0; right: 0; display: flex; flex-direction: column; width: min(540px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--border); }
+.filter-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; background: #20242766; opacity: 0; transition: opacity 220ms ease-out; }
+.filter-drawer { position: absolute; top: 0; right: 0; display: flex; flex-direction: column; width: min(540px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 240ms cubic-bezier(.22,1,.36,1); will-change: transform; }
+.filter-drawer-layer.is-open .filter-drawer-backdrop { opacity: 1; }
+.filter-drawer-layer.is-open .filter-drawer { transform: translateX(0); }
+.filter-drawer-layer.is-closing .filter-drawer-backdrop { opacity: 0; }
+.filter-drawer-layer.is-closing .filter-drawer { transform: translateX(100%); }
 .filter-drawer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 26px 18px; border-bottom: 1px solid var(--border); }
 .filter-drawer-header h2 { font-size: 20px; font-weight: 600; }
 .filter-drawer-header p { margin-top: 4px; color: var(--muted); font-size: 12px; }
@@ -505,4 +509,7 @@ summary::-webkit-details-marker { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .nav-link, .icon-button { transition: background-color 140ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filter-drawer-backdrop, .filter-drawer { transition-duration: 1ms; }
 }
