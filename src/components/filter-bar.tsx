@@ -222,6 +222,7 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
 
   const campaignNames = new Map((adsOptions?.campaigns ?? []).map(({ id, name }) => [id, name]));
   const chips: Array<{ key: string; label: string; remove: () => void }> = [
+    { key: "date-range", label: `Date: ${filters.dateRange.startDate} – ${filters.dateRange.endDate}`, remove: () => commit({ ...filters, dateRange: defaultFilters.dateRange }) },
     ...filters.campaignIds.map((id) => ({ key: `campaign:${id}`, label: `Campaign: ${campaignNames.get(id) ?? id}`, remove: () => updateList("campaignIds", id, false) })),
     ...filters.campaignTypes.map((type) => ({ key: `type:${type}`, label: `Type: ${formatEnum(type)}`, remove: () => updateList("campaignTypes", type as CampaignType, false) })),
     ...filters.devices.map((device) => ({ key: `device:${device}`, label: `Device: ${titleCase(device)}`, remove: () => updateList("devices", device as DeviceCategory, false) })),
@@ -229,7 +230,7 @@ export function FilterBar({ mode = "report", appliedPeriod, onSelectionChange, a
     ...filters.sourceMediums.map((value) => ({ key: `source:${value}`, label: `Source: ${value}`, remove: () => updateList("sourceMediums", value, false) })),
     ...filters.landingPages.map((value) => ({ key: `landing:${value}`, label: `Landing: ${value}`, remove: () => updateList("landingPages", value, false) })),
   ];
-  const clearAll = () => commit({ ...filters, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [] });
+  const clearAll = () => commit({ ...filters, dateRange: defaultFilters.dateRange, campaignIds: [], campaignTypes: [], devices: [], channelGroups: [], sourceMediums: [], landingPages: [] });
   const dateFields = <div className="filter-date-range">
     <label className="filter-field"><span>From</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={filters.dateRange.startDate} onChange={(event) => commit({ ...filters, dateRange: { ...filters.dateRange, startDate: event.target.value } })} /></label>
     <span className="filter-date-separator" aria-hidden="true">to</span>
